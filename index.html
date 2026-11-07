@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Trading Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="scene">
+      <div class="dashboard-shell">
+        <header class="topbar">
+          <div class="brand-wrap">
+            <div class="brand-mark">⚡</div>
+            <div class="brand-copy">
+              <span class="eyebrow">Indian equities · NSE</span>
+              <h1>MARKET DASHBOARD</h1>
+            </div>
+          </div>
+
+          <div class="header-meta">
+            <div class="live-pill is-offline" id="connectionStatus"><span class="pulse"></span> Data not configured</div>
+            <div class="status-strip">
+              <span>NSE</span>
+              <span>|</span>
+              <span>INR</span>
+              <span>|</span>
+              <span id="feedLabel">Provider feed required</span>
+            </div>
+          </div>
+
+          <div class="time-stamp" id="liveClock">Loading India time…</div>
+        </header>
+
+        <section class="toolbar">
+          <div>
+            <div class="toolbar-label">Indian equities</div>
+            <h2>NSE market overview</h2>
+            <div class="toolbar-note">Free quote feed is unofficial; delays and availability are not guaranteed.</div>
+          </div>
+          <div class="session-meta">
+            <span class="session-dot"></span>
+            <span>Last updated <strong id="updatedAt">—</strong></span>
+          </div>
+        </section>
+
+        <section class="metrics-row">
+          <article class="stat-box primary-quote-card">
+            <div class="tiny-label" id="primaryQuoteSymbol">RELIANCE · NSE</div>
+            <div class="stat-value" id="primaryQuotePrice">—</div>
+          </article>
+
+          <article class="stat-box">
+            <div class="tiny-label">Day change</div>
+            <div class="stat-value" id="primaryQuoteChange">—</div>
+          </article>
+
+          <article class="stat-box">
+            <div class="tiny-label">USD / INR</div>
+            <div class="stat-value" id="exchangeRate">—</div>
+          </article>
+
+          <article class="stat-box market-box">
+            <div class="tiny-label">NSE session</div>
+            <div class="stat-value market-closed" id="marketState">—</div>
+          </article>
+        </section>
+
+        <div class="chart-header">
+          <div class="chart-title">
+            <span class="panel-kicker">NSE · 5-minute bars</span>
+            <span class="dash-title"><span id="chartSymbol">RELIANCE</span> <span class="chart-description">Intraday price</span></span>
+          </div>
+          <div class="chart-quote">
+            <span>Last quote · INR</span>
+            <strong id="chartLastPrice">—</strong>
+          </div>
+          <div class="chart-actions" aria-label="Chart filters">
+            <span class="chip active" id="chartInterval">5 MIN</span>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-legend">
+            <span><i class="dot orange"></i> Price</span>
+            <span><i class="dot green"></i> EMA</span>
+          </div>
+          <svg id="chartSvg" viewBox="0 0 1020 420" role="img" aria-label="Trading chart"></svg>
+        </div>
+
+        <section class="strategy-section" aria-labelledby="strategyTitle">
+          <div class="strategy-heading">
+            <div>
+              <span class="panel-kicker">Research workspace · Educational only</span>
+              <h2 id="strategyTitle">Strategy lab</h2>
+              <p>Three concise strategy snapshots for the selected NSE symbol.</p>
+            </div>
+            <div class="strategy-labels">
+              <span class="strategy-tag backtest-tag">Historical · backtest</span>
+              <span class="strategy-tag scenario-tag">Forward-looking · heuristic</span>
+            </div>
+          </div>
+
+          <article class="adaptive-agent" aria-labelledby="adaptiveAgentTitle">
+            <div class="adaptive-agent-header">
+              <div>
+                <span class="strategy-tag paper-tag">Experimental · paper only</span>
+                <h3 id="adaptiveAgentTitle">Adaptive trading agent</h3>
+                <p id="agentMessage">Collecting historical 5-minute bars before training.</p>
+              </div>
+              <div class="agent-action-wrap">
+                <span class="strategy-state" id="agentState">Collecting data</span>
+                <strong class="agent-action" id="agentAction">COLLECTING HISTORY</strong>
+              </div>
+            </div>
+            <div class="agent-quick-stats" aria-live="polite">
+              <div><span>History</span><strong id="agentHistoryCount">0 / 240 bars</strong></div>
+              <div><span>Adaptive rule</span><strong id="agentSelectedRule">Not trained</strong></div>
+              <div><span>Holdout return</span><strong id="agentValidationReturn">—</strong></div>
+              <div><span>Buy &amp; hold</span><strong id="agentValidationBaseline">—</strong></div>
+              <div><span>Holdout drawdown</span><strong id="agentValidationDrawdown">—</strong></div>
+            </div>
+            <details class="strategy-details agent-details">
+              <summary>How the agent learns and manages risk <span aria-hidden="true">＋</span></summary>
+              <div class="strategy-details-content">
+                <p id="agentDetailSummary">The agent waits for at least 240 completed bars, compares a bounded EMA parameter set across three chronological walk-forward windows, and tests the selected parameters once on the final holdout.</p>
+                <dl class="strategy-rules">
+                  <div><dt>Learning</dt><dd id="agentLearningRead">Uses up to 1,200 completed bars and a fixed EMA candidate set. Candidates must trade in at least two of three chronological windows; the score rewards return while penalizing drawdown.</dd></div>
+                  <div><dt>Holdout</dt><dd id="agentValidationRead">The final 20% is excluded from parameter selection. At least three holdout trades, positive net return, drawdown at or below 15%, and outperformance of a cost-adjusted buy-and-hold benchmark are required before considering a paper setup.</dd></div>
+                  <div><dt>Decision</dt><dd id="agentCurrentRead">No rule has been trained yet.</dd></div>
+                  <div><dt>Persistence</dt><dd id="agentPersistenceStatus">Completed market bars are stored only in this browser's local storage, capped at 1,200 bars per symbol.</dd></div>
+                  <div><dt>Safety</dt><dd>This is an educational paper-only signal. It never submits orders, connects to a broker, or guarantees performance. Backtests use close-only data and estimated costs.</dd></div>
+                </dl>
+                <p class="strategy-footnote">Inspired by the observe/train/evaluate/repeat concept in <a href="https://www.youtube.com/watch?v=6njREUQAFdg" target="_blank" rel="noopener noreferrer">Lewis Jackson Investing's video</a>. The video transcript was unavailable during implementation; this agent is an independently implemented, explainable adaptation, not a reproduction of the video's code.</p>
+              </div>
+            </details>
+          </article>
+
+          <div class="strategy-grid">
+            <article class="strategy-card backtest-card" aria-labelledby="emaStrategyTitle">
+              <div class="strategy-card-heading">
+                <span class="strategy-tag backtest-tag">Backtested · EMA 9 / 21</span>
+                <span class="strategy-state" id="emaBacktestState">Waiting for history</span>
+              </div>
+              <h3 id="emaStrategyTitle">Trend-following crossover</h3>
+              <div class="strategy-quick-stats" aria-live="polite">
+                <span>Net return <strong id="emaNetReturn">—</strong></span>
+                <span>Trades <strong id="emaTradeCount">—</strong></span>
+              </div>
+              <details class="strategy-details">
+                <summary>View all details <span aria-hidden="true">＋</span></summary>
+                <div class="strategy-details-content">
+                  <p class="strategy-description">A long-only momentum ruleset that attempts to participate when short-term trend strength overtakes the slower trend. It can lag reversals and generate whipsaws in sideways markets.</p>
+                  <div class="strategy-metrics" aria-live="polite">
+                    <div><span>Net return</span><strong id="emaDetailNetReturn">—</strong></div>
+                    <div><span>Win rate</span><strong id="emaWinRate">—</strong></div>
+                    <div><span>Max drawdown</span><strong id="emaDrawdown">—</strong></div>
+                    <div><span>Closed trades</span><strong id="emaDetailTradeCount">—</strong></div>
+                  </div>
+                  <dl class="strategy-rules">
+                    <div><dt>Entry</dt><dd>EMA 9 crosses above EMA 21; simulated at the next available bar close.</dd></div>
+                    <div><dt>Exit</dt><dd>EMA 9 crosses below EMA 21; remaining position is marked out at the final close.</dd></div>
+                    <div><dt>Risk note</dt><dd>Long-only, fully invested while in a position; no leverage or separate stop order is modeled.</dd></div>
+                  </dl>
+                  <p class="strategy-footnote" id="emaBacktestPeriod">Backtest requires sufficient history.</p>
+                </div>
+              </details>
+            </article>
+
+            <article class="strategy-card backtest-card" aria-labelledby="rsiStrategyTitle">
+              <div class="strategy-card-heading">
+                <span class="strategy-tag backtest-tag">Backtested · RSI 14</span>
+                <span class="strategy-state" id="rsiBacktestState">Waiting for history</span>
+              </div>
+              <h3 id="rsiStrategyTitle">Oversold mean-reversion</h3>
+              <div class="strategy-quick-stats" aria-live="polite">
+                <span>Net return <strong id="rsiNetReturn">—</strong></span>
+                <span>Trades <strong id="rsiTradeCount">—</strong></span>
+              </div>
+              <details class="strategy-details">
+                <summary>View all details <span aria-hidden="true">＋</span></summary>
+                <div class="strategy-details-content">
+                  <p class="strategy-description">A long-only counter-trend ruleset that looks for a rebound after unusually weak short-term momentum. Oversold readings can persist during sharp declines, so this is not a stand-alone buy signal.</p>
+                  <div class="strategy-metrics" aria-live="polite">
+                    <div><span>Net return</span><strong id="rsiDetailNetReturn">—</strong></div>
+                    <div><span>Win rate</span><strong id="rsiWinRate">—</strong></div>
+                    <div><span>Max drawdown</span><strong id="rsiDrawdown">—</strong></div>
+                    <div><span>Closed trades</span><strong id="rsiDetailTradeCount">—</strong></div>
+                  </div>
+                  <dl class="strategy-rules">
+                    <div><dt>Entry</dt><dd>RSI 14 falls below 30; simulated at the next available bar close.</dd></div>
+                    <div><dt>Exit</dt><dd>RSI 14 rises above 55; remaining position is marked out at the final close.</dd></div>
+                    <div><dt>Risk note</dt><dd>No short positions or separate stop order are modeled; losses can continue before a reversal.</dd></div>
+                  </dl>
+                  <p class="strategy-footnote" id="rsiBacktestPeriod">Backtest requires sufficient history.</p>
+                </div>
+              </details>
+            </article>
+
+            <article class="strategy-card scenario-card" aria-labelledby="scenarioTitle">
+              <div class="strategy-card-heading">
+                <span class="strategy-tag scenario-tag">Forward-looking · indicator scenario</span>
+                <span class="strategy-state" id="scenarioState">Awaiting indicators</span>
+              </div>
+              <h3 id="scenarioTitle">Conditional momentum outlook</h3>
+              <div class="scenario-bias" id="scenarioBias">Insufficient data</div>
+              <div class="scenario-quick-stats">
+                <span>Last close <strong id="scenarioQuickClose">—</strong></span>
+                <span>RSI 14 <strong id="scenarioQuickRsi">—</strong></span>
+              </div>
+              <details class="strategy-details">
+                <summary>View all details <span aria-hidden="true">＋</span></summary>
+                <div class="strategy-details-content">
+                  <p class="strategy-description">A transparent technical read of current 5-minute closes—not machine learning, a guaranteed prediction, or a recommendation. It describes what would support or weaken each setup.</p>
+                  <div class="scenario-indicators">
+                    <div><span>EMA 9 / 21</span><strong id="scenarioEma">—</strong></div>
+                    <div><span>RSI 14</span><strong id="scenarioRsi">—</strong></div>
+                    <div><span>Last close</span><strong id="scenarioLastClose">—</strong></div>
+                  </div>
+                  <dl class="strategy-rules">
+                    <div><dt>Condition</dt><dd id="scenarioCondition">Waiting for enough valid bars to calculate indicators.</dd></div>
+                    <div><dt>Confirmation</dt><dd>Wait for a completed 5-minute close to confirm direction; avoid acting on an unfinished candle.</dd></div>
+                    <div><dt>Invalidation</dt><dd id="scenarioInvalidation">No scenario is active.</dd></div>
+                  </dl>
+                  <p class="strategy-footnote">No target, probability, or expected return is inferred. A technical condition can fail, and past price behavior does not determine future results.</p>
+                </div>
+              </details>
+            </article>
+          </div>
+
+          <details class="strategy-disclosure">
+            <summary>Backtest assumptions &amp; risk disclosure</summary>
+            <div class="strategy-disclosure-content">
+              <strong>How to read these results:</strong> Backtests use only the currently available 5-minute close series for <span id="strategySymbol">the selected symbol</span>. Signals are evaluated on a completed bar and filled at the next available close; an illustrative 0.10% cost is applied on each entry and exit, with no slippage, taxes, liquidity, corporate actions, or market-impact model. The current feed provides limited intraday history, not a robust multi-year test. Few or zero trades mean the displayed metrics are not statistically meaningful. Simulations are hypothetical, may be affected by data gaps and overfitting, and do not guarantee future performance. No strategy can assure profits; this dashboard does not place trades or provide personalized financial advice.
+            </div>
+          </details>
+        </section>
+
+        <div class="bottom-grid">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">Watchlist</span>
+                <h3>Market movers</h3>
+              </div>
+              <span class="panel-badge sample-badge" id="watchlistStatus">Waiting for feed</span>
+            </div>
+
+            <div class="table-wrap" tabindex="0" aria-label="Market movers table; scroll horizontally to see all columns">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Last (₹)</th>
+                    <th>Change</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody id="watchlist-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel narrative-panel">
+            <div class="panel-header compact">
+              <div>
+                <span class="panel-kicker">Data connection</span>
+                <h3>Live feed setup</h3>
+              </div>
+            </div>
+
+            <div class="signal-box">
+              <div class="signal-label">Free Yahoo Finance feed · unofficial</div>
+              <p id="feedMessage">
+                Loading NSE watchlist, intraday history, and USD/INR from the free Yahoo Finance fallback.
+              </p>
+            </div>
+
+            <div class="signal-disclaimer" id="feedDisclaimer">
+              Free source: Yahoo Finance public chart endpoint, not an official exchange API. Real-time exchange data is not guaranteed. For dependable live quotes, use an authorized provider with NSE entitlements.
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="strategy-engine.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

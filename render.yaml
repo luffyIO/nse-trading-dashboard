@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: indian-market-dashboard-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: MARKET_DATA_REFRESH_SECONDS
+        value: "60"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: NSE_WATCHLIST
+        value: RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
