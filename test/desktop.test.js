@@ -21,9 +21,11 @@ test('defines installable desktop builds for Windows, macOS, and Linux', () => {
 
 test('builds the desktop app from the local service and enables renderer isolation', () => {
   const desktopMain = fs.readFileSync(path.join(projectRoot, 'electron', 'main.js'), 'utf8');
+  const workflow = fs.readFileSync(path.join(projectRoot, '.github', 'workflows', 'desktop.yml'), 'utf8');
   assert.match(desktopMain, /require\('\.\.\/server'\)/);
   assert.match(desktopMain, /contextIsolation: true/);
   assert.match(desktopMain, /nodeIntegration: false/);
   assert.match(desktopMain, /sandbox: true/);
   assert.match(desktopMain, /127\.0\.0\.1/);
+  assert.match(workflow, /release:[\s\S]*?uses: actions\/checkout@v4/);
 });
