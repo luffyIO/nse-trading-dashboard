@@ -3,6 +3,7 @@ const liveClock = document.getElementById('liveClock');
 const connectionStatus = document.getElementById('connectionStatus');
 const updatedAt = document.getElementById('updatedAt');
 const chartLastPrice = document.getElementById('chartLastPrice');
+const themeToggle = document.getElementById('themeToggle');
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
@@ -12,6 +13,42 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
 let refreshTimer;
 const AGENT_HISTORY_KEY = 'indian-market-agent-history-v1';
 const MAX_AGENT_HISTORY_BARS = 1200;
+const THEME_KEY = 'indian-market-dashboard-theme-v1';
+let watchlistSortKey = null;
+let watchlistSortDirection = 1;
+
+function getSavedTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+function applyTheme(theme, persist = false) {
+  const nextTheme = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = nextTheme;
+  if (themeToggle) {
+    themeToggle.textContent = nextTheme === 'dark' ? 'Light theme' : 'Dark theme';
+    themeToggle.setAttribute('aria-label', `Switch to ${nextTheme === 'dark' ? 'light' : 'dark'} theme`);
+    themeToggle.title = '';
+  }
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_KEY, nextTheme);
+    } catch {
+      if (themeToggle) themeToggle.title = 'Theme preference cannot be saved in this browser.';
+    }
+  }
+  if (svg) renderChart(window.latestMarketChart || []);
+}
+
+applyTheme(getSavedTheme());
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+  });
+}
 
 function updateClock() {
   if (!liveClock) return;
@@ -66,7 +103,23 @@ function populateWatchlist(quotes = []) {
     return;
   }
 
-  quotes.forEach((quote) => {
+  const sortedQuotes = [...quotes];
+  if (watchlistSortKey) {
+    sortedQuotes.sort((left, right) => {
+      const leftValue = left[watchlistSortKey];
+      const rightValue = right[watchlistSortKey];
+      if (leftValue == null) return rightValue == null ? 0 : 1;
+      if (rightValue == null) return -1;
+      const comparison = watchlistSortKey === 'symbol'
+        ? String(leftValue).localeCompare(String(rightValue))
+        : typeof leftValue === 'number' && typeof rightValue === 'number'
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue));
+      return comparison * watchlistSortDirection;
+    });
+  }
+
+  sortedQuotes.forEach((quote) => {
     const row = document.createElement('tr');
     const symbolCell = document.createElement('td');
     const symbol = document.createElement('span');
@@ -90,6 +143,36 @@ function populateWatchlist(quotes = []) {
   });
 }
 
+function sortWatchlist(key) {
+  if (!['symbol', 'price', 'percentChange', 'timestamp'].includes(key)) return;
+  if (watchlistSortKey === key) {
+    watchlistSortDirection *= -1;
+  } else {
+    watchlistSortKey = key;
+    watchlistSortDirection = key === 'symbol' || key === 'timestamp' ? 1 : -1;
+  }
+
+  document.querySelectorAll('.table-sort-button').forEach((button) => {
+    const active = button.dataset.sortKey === watchlistSortKey;
+    const heading = button.closest('th');
+    if (!heading) return;
+    heading.setAttribute('aria-sort', active
+      ? watchlistSortDirection > 0 ? 'ascending' : 'descending'
+      : 'none');
+    button.setAttribute('aria-label', active
+      ? `Sort by ${button.textContent.trim()}, ${watchlistSortDirection > 0 ? 'ascending' : 'descending'}`
+      : `Sort by ${button.textContent.trim()}`);
+    const indicator = button.querySelector('span');
+    if (indicator) indicator.textContent = active
+      ? watchlistSortDirection > 0 ? ' ▲' : ' ▼'
+      : '';
+  });
+}
+
+document.querySelectorAll('.table-sort-button').forEach((button) => {
+  button.addEventListener('click', () => sortWatchlist(button.dataset.sortKey));
+});
+
 function createSvgElement(tag, attrs) {
   const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
   Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
@@ -105,7 +188,9 @@ function renderChart(points) {
     const message = createSvgElement('text', {
       x: 510,
       y: 210,
-      fill: 'rgba(255,255,255,0.65)',
+      fill: document.documentElement.dataset.theme === 'light'
+        ? 'rgba(20,36,43,0.68)'
+        : 'rgba(255,255,255,0.65)',
       'font-size': 16,
       'font-family': 'Inter, sans-serif',
       'text-anchor': 'middle'
@@ -136,14 +221,18 @@ function renderChart(points) {
       x2: width - margin.right,
       y1: y,
       y2: y,
-      stroke: 'rgba(255,255,255,0.1)',
+      stroke: document.documentElement.dataset.theme === 'light'
+        ? 'rgba(20,36,43,0.12)'
+        : 'rgba(255,255,255,0.1)',
       'stroke-width': 1
     }));
 
     const label = createSvgElement('text', {
       x: margin.left - 10,
       y: y + 4,
-      fill: 'rgba(255,255,255,0.56)',
+      fill: document.documentElement.dataset.theme === 'light'
+        ? 'rgba(20,36,43,0.68)'
+        : 'rgba(255,255,255,0.56)',
       'font-size': 11,
       'font-family': 'Inter, sans-serif',
       'text-anchor': 'end'
@@ -160,7 +249,7 @@ function renderChart(points) {
   const line = createSvgElement('polyline', {
     points: pointsText,
     fill: 'none',
-    stroke: '#ffb14a',
+    stroke: document.documentElement.dataset.theme === 'light' ? '#a85b00' : '#ffb14a',
     'stroke-width': 2.5,
     'stroke-linejoin': 'round',
     'stroke-linecap': 'round'
@@ -181,7 +270,7 @@ function renderChart(points) {
   svg.appendChild(createSvgElement('polyline', {
     points: emaPoints,
     fill: 'none',
-    stroke: '#2dff8e',
+    stroke: document.documentElement.dataset.theme === 'light' ? '#087446' : '#2dff8e',
     'stroke-width': 1.7,
     'stroke-dasharray': '5 5',
     opacity: 0.8
@@ -193,7 +282,7 @@ function renderChart(points) {
     cx: width - margin.right,
     cy: lastY,
     r: 4,
-    fill: '#ffb14a'
+    fill: document.documentElement.dataset.theme === 'light' ? '#a85b00' : '#ffb14a'
   }));
 }
 
@@ -391,6 +480,7 @@ function renderAdaptiveAgent(points, symbol) {
 
 function setMarketData(data) {
   const quotes = data.quotes || [];
+  window.latestMarketChart = data.chart || [];
   const primary = quotes.find((quote) => quote.symbol === data.chartSymbol);
   const isConnected = data.configured && quotes.length > 0;
   const isYahoo = data.source === 'yahoo-finance-unofficial';

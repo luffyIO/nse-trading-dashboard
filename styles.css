@@ -45,6 +45,36 @@ button {
   font: inherit;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.theme-toggle {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+}
+
 .scene {
   position: relative;
   width: min(100vw, 1620px);
@@ -190,6 +220,17 @@ h1 {
   text-transform: uppercase;
   white-space: nowrap;
   text-align: right;
+}
+
+@media (max-width: 760px) {
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .time-stamp {
+    width: auto;
+  }
 }
 
 .toolbar {
@@ -528,6 +569,32 @@ th {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 600;
+}
+
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.table-sort-button:hover,
+.table-sort-button:focus-visible {
+  color: var(--orange);
+}
+
+.table-sort-button:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 td {
@@ -1685,5 +1752,116 @@ tbody tr:hover {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  html[data-theme="light"] {
+    --bg: #edf2f4;
+    --bg-2: #e6edef;
+    --panel: rgba(255, 255, 255, 0.94);
+    --panel-soft: rgba(255, 255, 255, 0.84);
+    --panel-strong: rgba(255, 255, 255, 0.98);
+    --line: rgba(24, 43, 52, 0.12);
+    --line-strong: rgba(24, 43, 52, 0.2);
+    --text: #172a32;
+    --muted: rgba(28, 48, 57, 0.72);
+    --orange: #a85b00;
+    --orange-strong: #8d4a00;
+    --orange-soft: rgba(168, 91, 0, 0.1);
+    --green: #087446;
+    --green-soft: rgba(8, 116, 70, 0.1);
+    --red: #b52d29;
+    --shadow: rgba(22, 43, 54, 0.14);
+  }
+
+  html[data-theme="light"] body {
+    background: linear-gradient(180deg, #f8fafb 0%, #e8eff1 100%);
+  }
+
+  html[data-theme="light"] .scene {
+    background: rgba(244, 248, 249, 0.94);
+    border-color: rgba(24, 43, 52, 0.1);
+    box-shadow: 0 24px 60px rgba(22, 43, 54, 0.14);
+  }
+
+  html[data-theme="light"] .topbar {
+    border-color: var(--line);
+  }
+
+  html[data-theme="light"] .eyebrow,
+  html[data-theme="light"] .status-strip,
+  html[data-theme="light"] .toolbar-label,
+  html[data-theme="light"] .panel-kicker,
+  html[data-theme="light"] .tiny-label,
+  html[data-theme="light"] .chart-header,
+  html[data-theme="light"] .chart-legend,
+  html[data-theme="light"] th,
+  html[data-theme="light"] td,
+  html[data-theme="light"] .signal-label,
+  html[data-theme="light"] .signal-box p,
+  html[data-theme="light"] .signal-list li,
+  html[data-theme="light"] .strategy-state,
+  html[data-theme="light"] .strategy-rules dd,
+  html[data-theme="light"] .scenario-bias {
+    color: var(--muted);
+  }
+
+  html[data-theme="light"] .status-strip span:nth-child(odd),
+  html[data-theme="light"] .time-stamp {
+    color: var(--text);
+  }
+
+  html[data-theme="light"] .regime-box,
+  html[data-theme="light"] .stat-box,
+  html[data-theme="light"] .panel {
+    background: linear-gradient(180deg, #fff 0%, #f6f9fa 100%);
+    border-color: var(--line);
+    box-shadow: 0 8px 24px rgba(22, 43, 54, 0.05);
+  }
+
+  html[data-theme="light"] .chart-panel,
+  html[data-theme="light"] .chart-legend,
+  html[data-theme="light"] table,
+  html[data-theme="light"] .strategy-metrics div,
+  html[data-theme="light"] .scenario-indicators div,
+  html[data-theme="light"] .agent-quick-stats div,
+  html[data-theme="light"] .strategy-quick-stats {
+    background: #f7fafb;
+    border-color: var(--line);
+  }
+
+  html[data-theme="light"] .strategy-section {
+    background: linear-gradient(160deg, #fff 0%, #f2f7f8 100%);
+    border-color: var(--line);
+  }
+
+  html[data-theme="light"] .strategy-card,
+  html[data-theme="light"] .adaptive-agent {
+    background: rgba(255, 255, 255, 0.72);
+    border-color: var(--line);
+  }
+
+  html[data-theme="light"] .scenario-card,
+  html[data-theme="light"] .strategy-disclosure,
+  html[data-theme="light"] .signal-box,
+  html[data-theme="light"] .signal-list li {
+    background: rgba(236, 243, 246, 0.82);
+    border-color: var(--line);
+  }
+
+  html[data-theme="light"] .strategy-card h3,
+  html[data-theme="light"] .adaptive-agent h3,
+  html[data-theme="light"] .strategy-metrics strong,
+  html[data-theme="light"] .scenario-indicators strong,
+  html[data-theme="light"] .agent-quick-stats strong {
+    color: var(--text);
+  }
+
+  html[data-theme="light"] .scenario-card .strategy-rules dt,
+  html[data-theme="light"] .adaptive-agent a {
+    color: #1d4f91;
+  }
+
+  html[data-theme="light"] tbody tr:hover {
+    background: rgba(24, 43, 52, 0.045);
   }
 }

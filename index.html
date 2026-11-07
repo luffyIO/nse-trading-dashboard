@@ -29,7 +29,10 @@
             </div>
           </div>
 
-          <div class="time-stamp" id="liveClock">Loading India time…</div>
+          <div class="topbar-actions">
+            <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme">Light theme</button>
+            <div class="time-stamp" id="liveClock">Loading India time…</div>
+          </div>
         </header>
 
         <section class="toolbar">
@@ -250,10 +253,10 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Symbol</th>
-                    <th>Last (₹)</th>
-                    <th>Change</th>
-                    <th>Updated</th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="symbol">Symbol <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="price">Last (₹) <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="percentChange">Change <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="timestamp">Updated <span aria-hidden="true"></span></button></th>
                   </tr>
                 </thead>
                 <tbody id="watchlist-body"></tbody>

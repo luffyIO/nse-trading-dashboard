@@ -14,6 +14,35 @@ npm start
 
 Open [http://localhost:3000/](http://localhost:3000/).
 
+## Desktop app
+
+The desktop app bundles the dashboard and starts its Node API on a local loopback port. Market data still requires an internet connection and uses the same Yahoo Finance fallback or optional Twelve Data configuration described below. Theme choice and the adaptive agent's history stay in the local desktop app profile; they are not uploaded to the hosting service.
+
+To run the desktop app from source:
+
+```powershell
+npm install
+npm run desktop
+```
+
+To build an installer on its matching operating system:
+
+```powershell
+npm run dist:win
+npm run dist:mac
+npm run dist:linux
+```
+
+Installers are written to `release/`:
+
+- Windows: x64 NSIS `.exe` setup with desktop and Start Menu shortcuts.
+- macOS: universal `.dmg` for Apple Silicon and Intel Macs.
+- Linux: x64 `.AppImage` and Debian `.deb` packages.
+
+The cross-platform GitHub Actions workflow builds each installer on its native runner. Run it manually to download workflow artifacts, or push a `v*` tag to publish a GitHub Release. These builds are currently unsigned: Windows may show SmartScreen warnings, and macOS may require the user to approve an app from an unidentified developer. Signing/notarization credentials are not included. The desktop app is a client for the market-data sources, not a broker or trade execution program.
+
+The dashboard adds saved dark/light themes and sortable watchlist columns (symbol, price, daily change, and update time). Sorting changes only the display order and does not affect quote values or strategy calculations.
+
 Optional: configure Twelve Data as the primary source. Create an account and API key at [twelvedata.com](https://twelvedata.com/), then copy `.env.example` to `.env` and set `TWELVE_DATA_API_KEY`. Confirm the plan grants access to NSE symbols and real-time data if required; exchange entitlements and latency depend on your subscription.
 
 Example `.env`:
@@ -37,6 +66,10 @@ If Yahoo or Twelve Data is unavailable, the dashboard shows a clear unavailable 
 - Yahoo Finance does not provide authoritative NSE session state here, so session status remains unknown.
 - Dhan's official API documentation states that Data APIs have additional charges; do not assume broker API access means free live market data.
 - The dashboard is informational only, not a trading signal service, broker connection, or execution system.
+
+## Comparable project review
+
+The public [Swarajbabu/STOCK_MARKET](https://github.com/Swarajbabu/STOCK_MARKET) project was cloned and reviewed as a feature reference for market dashboards. It describes charts, market movers, theme switching, and saved chat. It does not provide a license file, so no code or assets from it were copied; this project independently implements its theme and market-mover sorting features. Chat was not added because conversational stock analysis is outside the dashboard's current verified market-data and paper-research scope.
 
 ## Public deployment (GitHub Pages + Render API)
 
