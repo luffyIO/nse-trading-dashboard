@@ -18,13 +18,15 @@ const TRUST_PROXY_HOPS = Number.isInteger(configuredProxyHops) && configuredProx
   ? configuredProxyHops
   : 0;
 const API_KEY = process.env.TWELVE_DATA_API_KEY;
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const API_BASE_URL = 'https://api.twelvedata.com';
+const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 const YAHOO_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 const configuredRefreshSeconds = Number(process.env.MARKET_DATA_REFRESH_SECONDS || 60);
-const REFRESH_SECONDS = Number.isFinite(configuredRefreshSeconds)
+const CONFIGURED_REFRESH_SECONDS = Number.isFinite(configuredRefreshSeconds)
   ? Math.min(3600, Math.max(30, Math.floor(configuredRefreshSeconds)))
   : 60;
-const REFRESH_INTERVAL_MS = REFRESH_SECONDS * 1000;
+const ALPHA_VANTAGE_REFRESH_SECONDS = 6 * 60 * 60;
 const configuredWatchlist = (process.env.NSE_WATCHLIST || 'RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK')
   .split(',')
   .map((symbol) => symbol.trim().toUpperCase())
@@ -34,10 +36,36 @@ if (WATCHLIST.length === 0) {
   WATCHLIST.push('RELIANCE');
 }
 const CHART_SYMBOL = WATCHLIST[0] || 'RELIANCE';
+let ALPHA_VANTAGE_SYMBOL_MAP = {};
+if (process.env.ALPHA_VANTAGE_SYMBOL_MAP) {
+  const parsedMap = JSON.parse(process.env.ALPHA_VANTAGE_SYMBOL_MAP);
+  if (!parsedMap || Array.isArray(parsedMap) || typeof parsedMap !== 'object') {
+    throw new Error('ALPHA_VANTAGE_SYMBOL_MAP must be a JSON object.');
+  }
+  for (const [symbol, mapping] of Object.entries(parsedMap)) {
+    if (!/^[A-Z0-9&.-]{1,20}$/.test(symbol)
+      || !mapping
+      || typeof mapping.symbol !== 'string'
+      || !mapping.symbol.trim()
+      || mapping.exchange !== 'NSE'
+      || mapping.currency !== 'INR') {
+      throw new Error(`ALPHA_VANTAGE_SYMBOL_MAP has an invalid NSE/INR mapping for ${symbol}.`);
+    }
+    ALPHA_VANTAGE_SYMBOL_MAP[symbol] = mapping.symbol.trim();
+  }
+}
+const HAS_COMPLETE_ALPHA_VANTAGE_MAPPING = WATCHLIST.every((symbol) => ALPHA_VANTAGE_SYMBOL_MAP[symbol]);
+const REFRESH_SECONDS = !API_KEY && ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING
+  ? Math.max(CONFIGURED_REFRESH_SECONDS, ALPHA_VANTAGE_REFRESH_SECONDS)
+  : CONFIGURED_REFRESH_SECONDS;
+const REFRESH_INTERVAL_MS = REFRESH_SECONDS * 1000;
+const ALPHA_VANTAGE_REFRESH_INTERVAL_MS = ALPHA_VANTAGE_REFRESH_SECONDS * 1000;
 
-let cachedMarketData = null;
-let cachedAt = 0;
-let refreshInProgress = null;
+const marketDataCache = new Map();
+const refreshInProgress = new Map();
+let cachedAlphaVantageQuotes = null;
+let cachedAlphaVantageAt = 0;
+let alphaVantageRefreshInProgress = null;
 
 app.set('trust proxy', TRUST_PROXY_HOPS);
 
@@ -99,6 +127,9 @@ function sendPublicAsset(fileName) {
 }
 
 function parseNumber(value) {
+  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
+    return null;
+  }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -119,6 +150,85 @@ async function fetchTwelveData(endpoint, params) {
     throw new Error(payload.message || 'Market data provider rejected the request');
   }
   return payload;
+}
+
+async function fetchAlphaVantage(endpoint, params) {
+  const url = new URL(ALPHA_VANTAGE_BASE_URL);
+  Object.entries({ function: endpoint, ...params, apikey: ALPHA_VANTAGE_API_KEY }).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) {
+    throw new Error(`Alpha Vantage returned HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.Note || payload.Information || payload['Error Message']) {
+    throw new Error(payload.Note || payload.Information || payload['Error Message']);
+  }
+  return payload;
+}
+
+async function fetchAlphaVantageQuote(symbol) {
+  const providerSymbol = ALPHA_VANTAGE_SYMBOL_MAP[symbol];
+  if (!providerSymbol) {
+    throw new Error(`Configure a verified NSE/INR Alpha Vantage symbol mapping for ${symbol}.`);
+  }
+
+  const payload = await fetchAlphaVantage('GLOBAL_QUOTE', { symbol: providerSymbol });
+  const quote = payload['Global Quote'];
+  const returnedSymbol = quote?.['01. symbol'];
+  const price = parseNumber(quote?.['05. price']);
+  const change = parseNumber(quote?.['09. change']);
+  const percentChange = parseNumber(String(quote?.['10. change percent'] || '').replace(/%$/, ''));
+
+  if (returnedSymbol !== providerSymbol
+    || price === null
+    || price <= 0
+    || change === null
+    || percentChange === null) {
+    throw new Error(`Alpha Vantage did not return a complete quote for ${symbol}.`);
+  }
+
+  return {
+    symbol,
+    name: symbol,
+    price,
+    change,
+    percentChange,
+    currency: 'INR',
+    timestamp: quote['07. latest trading day'] || null,
+    marketOpen: null
+  };
+}
+
+async function getAlphaVantageQuotes() {
+  if (cachedAlphaVantageQuotes && Date.now() - cachedAlphaVantageAt < ALPHA_VANTAGE_REFRESH_INTERVAL_MS) {
+    return cachedAlphaVantageQuotes;
+  }
+  if (!alphaVantageRefreshInProgress) {
+    alphaVantageRefreshInProgress = Promise.allSettled(WATCHLIST.map(fetchAlphaVantageQuote))
+      .then((results) => {
+        const quotes = [];
+        const errors = [];
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            quotes.push(result.value);
+          } else {
+            errors.push(`${WATCHLIST[index]}: ${result.reason.message}`);
+          }
+        });
+        const snapshot = { quotes, errors };
+        cachedAlphaVantageQuotes = snapshot;
+        cachedAlphaVantageAt = Date.now();
+        return snapshot;
+      })
+      .finally(() => {
+        alphaVantageRefreshInProgress = null;
+      });
+  }
+  return alphaVantageRefreshInProgress;
 }
 
 async function fetchQuote(symbol) {
@@ -183,7 +293,7 @@ function getYahooPoints(chartResult) {
     .filter((point) => point.close !== null);
 }
 
-async function buildYahooMarketData() {
+async function buildYahooMarketData(chartSymbol = CHART_SYMBOL) {
   const results = await Promise.allSettled([
     ...WATCHLIST.map((symbol) => fetchYahooChart(`${symbol}.NS`)),
     fetchYahooChart('USDINR=X')
@@ -233,7 +343,7 @@ async function buildYahooMarketData() {
       marketOpen: null
     });
 
-    if (symbol === CHART_SYMBOL) {
+    if (symbol === chartSymbol) {
       chart = getYahooPoints(result.value);
     }
   });
@@ -254,7 +364,8 @@ async function buildYahooMarketData() {
     updatedAt: new Date().toISOString(),
     quotes,
     chart,
-    chartSymbol: CHART_SYMBOL,
+    chartSymbol,
+    chartSymbols: WATCHLIST,
     exchangeRate,
     errors,
     error: quotes.length === 0
@@ -264,7 +375,7 @@ async function buildYahooMarketData() {
   };
 }
 
-async function buildTwelveDataMarketData() {
+async function buildTwelveDataMarketData(chartSymbol = CHART_SYMBOL) {
   const quotesResult = await Promise.allSettled(WATCHLIST.map(fetchQuote));
   const quotes = quotesResult
     .filter((result) => result.status === 'fulfilled')
@@ -277,7 +388,7 @@ async function buildTwelveDataMarketData() {
 
   const [chartResult, fxResult] = await Promise.allSettled([
     fetchTwelveData('/time_series', {
-      symbol: CHART_SYMBOL,
+      symbol: chartSymbol,
       exchange: 'NSE',
       interval: '5min',
       outputsize: '100',
@@ -315,7 +426,8 @@ async function buildTwelveDataMarketData() {
     updatedAt: new Date().toISOString(),
     quotes,
     chart: chart || [],
-    chartSymbol: CHART_SYMBOL,
+    chartSymbol,
+    chartSymbols: WATCHLIST,
     exchangeRate,
     errors: quoteErrors,
     error: quotes.length === 0
@@ -324,35 +436,109 @@ async function buildTwelveDataMarketData() {
   };
 }
 
-async function buildMarketData() {
-  if (!API_KEY) return buildYahooMarketData();
-
-  try {
-    const data = await buildTwelveDataMarketData();
-    if (data.quotes.length > 0) return data;
-    throw new Error(data.error || 'Twelve Data returned no valid quotes.');
-  } catch (error) {
-    const fallback = await buildYahooMarketData();
-    fallback.errors.unshift(`Twelve Data unavailable: ${error.message}`);
-    return fallback;
+async function buildAlphaVantageMarketData(chartSymbol = CHART_SYMBOL) {
+  if (!HAS_COMPLETE_ALPHA_VANTAGE_MAPPING) {
+    throw new Error('Alpha Vantage requires an explicit NSE/INR symbol mapping for every configured watchlist symbol.');
   }
+  const snapshot = await getAlphaVantageQuotes();
+  if (snapshot.quotes.length !== WATCHLIST.length) {
+    return {
+      configured: true,
+      source: 'alpha-vantage',
+      provider: 'Alpha Vantage',
+      currency: 'INR',
+      exchange: 'NSE',
+      refreshSeconds: REFRESH_SECONDS,
+      updatedAt: new Date().toISOString(),
+      quotes: snapshot.quotes,
+      chart: [],
+      chartSymbol,
+      chartSymbols: WATCHLIST,
+      exchangeRate: null,
+      errors: snapshot.errors,
+      error: 'Alpha Vantage did not return a complete quote for every configured watchlist symbol.'
+    };
+  }
+
+  const chartResults = await Promise.allSettled([
+    fetchYahooChart(`${chartSymbol}.NS`),
+    fetchYahooChart('USDINR=X')
+  ]);
+  const chart = chartResults[0].status === 'fulfilled' ? getYahooPoints(chartResults[0].value) : [];
+  const exchangeRate = chartResults[1].status === 'fulfilled'
+    ? parseNumber(chartResults[1].value.meta?.regularMarketPrice)
+    : null;
+  const errors = [];
+  if (chartResults[0].status === 'rejected') errors.push(`Chart: ${chartResults[0].reason.message}`);
+  if (chartResults[1].status === 'rejected') errors.push(`USD/INR: ${chartResults[1].reason.message}`);
+
+  return {
+    configured: true,
+    source: 'alpha-vantage',
+    provider: 'Alpha Vantage quotes · Yahoo Finance chart/FX',
+    currency: 'INR',
+    exchange: 'NSE',
+    refreshSeconds: REFRESH_SECONDS,
+    updatedAt: new Date().toISOString(),
+    quotes: snapshot.quotes,
+    chart,
+    chartSymbol,
+    chartSymbols: WATCHLIST,
+    exchangeRate,
+    errors,
+    disclaimer: 'Alpha Vantage quote snapshots may be delayed and depend on symbol/plan coverage. Intraday chart and USD/INR data use the unofficial Yahoo Finance feed. Verify exchange coverage and entitlements; real-time NSE data is not guaranteed.'
+  };
 }
 
-async function getMarketData() {
-  const isFresh = cachedMarketData && Date.now() - cachedAt < REFRESH_INTERVAL_MS;
-  if (isFresh) return cachedMarketData;
-  if (!refreshInProgress) {
-    refreshInProgress = buildMarketData()
+async function buildMarketData(chartSymbol = CHART_SYMBOL) {
+  const providerErrors = [];
+
+  if (API_KEY) {
+    try {
+      const data = await buildTwelveDataMarketData(chartSymbol);
+      if (data.quotes.length > 0) return data;
+      throw new Error(data.error || 'Twelve Data returned no valid quotes.');
+    } catch (error) {
+      providerErrors.push(`Twelve Data unavailable: ${error.message}`);
+    }
+  }
+
+  if (ALPHA_VANTAGE_API_KEY) {
+    try {
+      const data = await buildAlphaVantageMarketData(chartSymbol);
+      if (data.quotes.length > 0 && data.quotes.length === WATCHLIST.length) {
+        data.errors.unshift(...providerErrors);
+        return data;
+      }
+      providerErrors.push(`Alpha Vantage unavailable: ${data.error || 'No complete NSE watchlist quotes were returned.'}`);
+    } catch (error) {
+      providerErrors.push(`Alpha Vantage unavailable: ${error.message}`);
+    }
+  }
+
+  const fallback = await buildYahooMarketData(chartSymbol);
+  fallback.errors.unshift(...providerErrors);
+  return fallback;
+}
+
+async function getMarketData(chartSymbol = CHART_SYMBOL) {
+  if (chartSymbol !== CHART_SYMBOL && !WATCHLIST.includes(chartSymbol)) {
+    throw new Error('Requested chart symbol is not in the configured NSE watchlist.');
+  }
+  const cached = marketDataCache.get(chartSymbol);
+  if (cached && Date.now() - cached.cachedAt < REFRESH_INTERVAL_MS) return cached.data;
+  if (!refreshInProgress.has(chartSymbol)) {
+    const request = buildMarketData(chartSymbol)
       .then((data) => {
-        cachedMarketData = data;
-        cachedAt = Date.now();
+        marketDataCache.set(chartSymbol, { data, cachedAt: Date.now() });
         return data;
       })
       .finally(() => {
-        refreshInProgress = null;
+        if (refreshInProgress.get(chartSymbol) === request) refreshInProgress.delete(chartSymbol);
       });
+    refreshInProgress.set(chartSymbol, request);
   }
-  return refreshInProgress;
+  return refreshInProgress.get(chartSymbol);
 }
 
 app.use((req, res, next) => {
@@ -381,8 +567,20 @@ app.get('/api/health', apiRateLimiter, (_req, res) => {
   res.json({
     ok: true,
     configured: true,
-    provider: API_KEY ? 'Twelve Data with Yahoo Finance fallback' : 'Yahoo Finance (unofficial)',
-    mode: API_KEY ? 'twelvedata-with-yahoo-fallback' : 'yahoo-finance-unofficial',
+    provider: API_KEY
+      ? ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING
+        ? 'Twelve Data, Alpha Vantage, and Yahoo Finance fallback'
+        : 'Twelve Data with Yahoo Finance fallback'
+      : ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING
+        ? 'Alpha Vantage quotes with Yahoo Finance chart/FX and fallback'
+        : 'Yahoo Finance (unofficial)',
+    mode: API_KEY
+      ? ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING
+        ? 'twelvedata-alpha-vantage-yahoo-fallback'
+        : 'twelvedata-yahoo-fallback'
+      : ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING
+        ? 'alpha-vantage-yahoo-fallback'
+        : 'yahoo-finance-unofficial',
     exchange: 'NSE',
     currency: 'INR',
     symbols: WATCHLIST,
@@ -415,8 +613,15 @@ app.get('/api/status', apiRateLimiter, async (_req, res) => {
 });
 
 app.get('/api/market-data', apiRateLimiter, async (_req, res) => {
+  const requestedSymbol = typeof _req.query.symbol === 'string'
+    ? _req.query.symbol.trim().toUpperCase()
+    : CHART_SYMBOL;
+  if (!WATCHLIST.includes(requestedSymbol)) {
+    return res.status(400).json({ error: 'Choose a chart symbol from the configured NSE watchlist.' });
+  }
+
   try {
-    res.json(await getMarketData());
+    res.json(await getMarketData(requestedSymbol));
   } catch (error) {
     res.status(502).json({ error: `Unable to load NSE market data: ${error.message}` });
   }
@@ -429,7 +634,7 @@ app.use((_req, res) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Indian market dashboard running at http://localhost:${PORT}`);
-    console.log(`Data mode: ${API_KEY ? 'Twelve Data provider configured' : 'unconfigured (set TWELVE_DATA_API_KEY)'}`);
+    console.log(`Data mode: ${API_KEY ? 'Twelve Data provider configured' : ALPHA_VANTAGE_API_KEY && HAS_COMPLETE_ALPHA_VANTAGE_MAPPING ? 'Alpha Vantage mappings configured' : 'Yahoo Finance fallback'}`);
     console.log(`Trusted proxy hops: ${TRUST_PROXY_HOPS}`);
   });
 }
@@ -437,9 +642,12 @@ if (require.main === module) {
 module.exports = {
   app,
   buildMarketData,
+  buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
   buildYahooMarketData,
+  fetchAlphaVantageQuote,
   createCorsMiddleware,
   createRateLimiter,
+  fetchAlphaVantageQuote,
   getMarketData
 };

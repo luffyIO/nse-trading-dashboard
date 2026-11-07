@@ -1,0 +1,53 @@
+services:
+  dashboard:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      TRUST_PROXY_HOPS: "1"
+      NSE_WATCHLIST: ${NSE_WATCHLIST:-RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK}
+      MARKET_DATA_REFRESH_SECONDS: ${MARKET_DATA_REFRESH_SECONDS:-60}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      ALPHA_VANTAGE_SYMBOL_MAP: ${ALPHA_VANTAGE_SYMBOL_MAP:-}
+    expose:
+      - "3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env to a domain pointed at this server}
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

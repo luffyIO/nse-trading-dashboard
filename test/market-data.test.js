@@ -2,10 +2,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.TWELVE_DATA_API_KEY = 'test-key';
+process.env.ALPHA_VANTAGE_API_KEY = 'alpha-test-key';
+process.env.ALPHA_VANTAGE_SYMBOL_MAP = JSON.stringify({
+  RELIANCE: { symbol: 'RELIANCE.NSE', exchange: 'NSE', currency: 'INR' },
+  TCS: { symbol: 'TCS.NSE', exchange: 'NSE', currency: 'INR' },
+  HDFCBANK: { symbol: 'HDFCBANK.NSE', exchange: 'NSE', currency: 'INR' },
+  INFY: { symbol: 'INFY.NSE', exchange: 'NSE', currency: 'INR' },
+  ICICIBANK: { symbol: 'ICICIBANK.NSE', exchange: 'NSE', currency: 'INR' }
+});
 const {
   buildMarketData,
+  buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
-  buildYahooMarketData
+  buildYahooMarketData,
+  fetchAlphaVantageQuote,
+  getMarketData
 } = require('../server');
 
 test('builds an NSE watchlist, chart series, and USD/INR rate from provider responses', async () => {
@@ -174,7 +185,144 @@ test('extracts free Yahoo Finance NSE quotes, intraday bars, and USD/INR without
   }
 });
 
-test('falls back to Yahoo Finance when an authorized provider returns no usable quotes', async () => {
+test('builds Alpha Vantage watchlist quotes only for explicitly mapped symbols', async () => {
+  const originalFetch = global.fetch;
+  const alphaSymbols = [];
+  const yahooSymbols = [];
+
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.alphavantage.co') {
+      const symbol = url.searchParams.get('symbol');
+      alphaSymbols.push(symbol);
+      return {
+        ok: true,
+        json: async () => ({
+          'Global Quote': {
+            '01. symbol': symbol,
+            '05. price': '123.45',
+            '09. change': '1.23',
+            '10. change percent': '1.00%',
+            '07. latest trading day': '2026-11-07'
+          }
+        })
+      };
+    }
+
+    const symbol = decodeURIComponent(url.pathname.split('/').pop());
+    yahooSymbols.push(symbol);
+    const isFx = symbol === 'USDINR=X';
+    return {
+      ok: true,
+      json: async () => ({
+        chart: {
+          result: [{
+            meta: { regularMarketPrice: isFx ? 88.25 : 123.45 },
+            timestamp: [1793959200],
+            indicators: { quote: [{ close: [123.45] }] }
+          }],
+          error: null
+        }
+      })
+    };
+  };
+
+  try {
+    const data = await buildAlphaVantageMarketData('TCS');
+    assert.equal(data.source, 'alpha-vantage');
+    assert.equal(data.quotes.length, 5);
+    assert.equal(data.quotes[0].symbol, 'RELIANCE');
+    assert.equal(data.quotes[0].currency, 'INR');
+    assert.equal(data.chartSymbol, 'TCS');
+    assert.equal(alphaSymbols.length, 5);
+    assert.equal(alphaSymbols.includes('TCS.NSE'), true);
+    assert.deepEqual(yahooSymbols.sort(), ['TCS.NS', 'USDINR=X']);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('rejects an Alpha Vantage response for a different provider symbol', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      'Global Quote': {
+        '01. symbol': 'UNRELATED',
+        '05. price': '123.45',
+        '10. change percent': '1.00%'
+      }
+    })
+  });
+
+  try {
+    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete quote/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('rejects incomplete Alpha Vantage change data instead of treating blanks as zero', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      'Global Quote': {
+        '01. symbol': 'RELIANCE.NSE',
+        '05. price': '123.45',
+        '09. change': '',
+        '10. change percent': ''
+      }
+    })
+  });
+
+  try {
+    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete quote/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('keeps independently selected chart symbols isolated in the market-data cache', async () => {
+  const originalFetch = global.fetch;
+  const chartSymbols = [];
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    if (url.pathname === '/quote') {
+      return {
+        ok: true,
+        json: async () => ({
+          close: '100',
+          currency: 'INR',
+          percent_change: '1'
+        })
+      };
+    }
+    if (url.pathname === '/time_series') {
+      const symbol = url.searchParams.get('symbol');
+      chartSymbols.push(symbol);
+      return {
+        ok: true,
+        json: async () => ({ values: [{ datetime: '2026-11-07 09:15:00', close: symbol === 'TCS' ? '200' : '300' }] })
+      };
+    }
+    return { ok: true, json: async () => ({ rate: '88.2' }) };
+  };
+
+  try {
+    const [tcs, infy] = await Promise.all([getMarketData('TCS'), getMarketData('INFY')]);
+    assert.equal(tcs.chartSymbol, 'TCS');
+    assert.equal(infy.chartSymbol, 'INFY');
+    assert.equal(tcs.chart[0].close, 200);
+    assert.equal(infy.chart[0].close, 300);
+    assert.deepEqual(chartSymbols.sort(), ['INFY', 'TCS']);
+    await assert.rejects(getMarketData('OUTSIDE_WATCHLIST'), /not in the configured NSE watchlist/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('uses the mapped Alpha Vantage fallback when Twelve Data returns no usable quotes', async () => {
   const originalFetch = global.fetch;
 
   global.fetch = async (input) => {
@@ -210,7 +358,7 @@ test('falls back to Yahoo Finance when an authorized provider returns no usable 
 
   try {
     const data = await buildMarketData();
-    assert.equal(data.source, 'yahoo-finance-unofficial');
+    assert.equal(data.source, 'alpha-vantage');
     assert.equal(data.quotes.length, 5);
     assert.equal(data.errors[0].startsWith('Twelve Data unavailable:'), true);
   } finally {

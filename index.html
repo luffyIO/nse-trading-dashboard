@@ -39,7 +39,7 @@
           <div>
             <div class="toolbar-label">Indian equities</div>
             <h2>NSE market overview</h2>
-            <div class="toolbar-note">Free quote feed is unofficial; delays and availability are not guaranteed.</div>
+            <div class="toolbar-note">Feed coverage and delay depend on your provider; the free fallback is unofficial.</div>
           </div>
           <div class="session-meta">
             <span class="session-dot"></span>
@@ -74,6 +74,12 @@
             <span class="panel-kicker">NSE · 5-minute bars</span>
             <span class="dash-title"><span id="chartSymbol">RELIANCE</span> <span class="chart-description">Intraday price</span></span>
           </div>
+          <label class="chart-symbol-control" for="chartSymbolSelect">
+            <span>Chart symbol</span>
+            <select id="chartSymbolSelect" aria-label="Select a watchlist symbol for the intraday chart">
+              <option value="RELIANCE">RELIANCE</option>
+            </select>
+          </label>
           <div class="chart-quote">
             <span>Last quote · INR</span>
             <strong id="chartLastPrice">—</strong>
@@ -262,28 +268,61 @@
                 <tbody id="watchlist-body"></tbody>
               </table>
             </div>
+
+            <div class="top-gainers">
+              <div class="top-gainers-heading">
+                <h4>Top gainers</h4>
+                <span>Configured watchlist</span>
+              </div>
+              <ol class="top-gainers-list" id="topGainersList" aria-live="polite">
+                <li class="top-gainers-empty">Waiting for verified quote data.</li>
+              </ol>
+            </div>
           </section>
 
           <section class="panel narrative-panel">
             <div class="panel-header compact">
               <div>
                 <span class="panel-kicker">Data connection</span>
-                <h3>Live feed setup</h3>
+                <h3>Market data source</h3>
               </div>
             </div>
 
             <div class="signal-box">
-              <div class="signal-label">Free Yahoo Finance feed · unofficial</div>
+              <div class="signal-label">Configured provider · fallback varies</div>
               <p id="feedMessage">
-                Loading NSE watchlist, intraday history, and USD/INR from the free Yahoo Finance fallback.
+                Connecting to the configured NSE quote, chart, and USD/INR data sources.
               </p>
             </div>
 
             <div class="signal-disclaimer" id="feedDisclaimer">
-              Free source: Yahoo Finance public chart endpoint, not an official exchange API. Real-time exchange data is not guaranteed. For dependable live quotes, use an authorized provider with NSE entitlements.
+              Provider availability, exchange coverage, and latency depend on your account and data entitlements. Yahoo Finance fallback data is unofficial and has no real-time guarantee.
             </div>
           </section>
         </div>
+
+        <section class="panel market-assistant" aria-labelledby="marketAssistantTitle">
+          <div class="panel-header">
+            <div>
+              <span class="panel-kicker">Private · on this device</span>
+              <h3 id="marketAssistantTitle">Market assistant</h3>
+            </div>
+            <button class="assistant-clear" id="assistantClear" type="button">Clear chat</button>
+          </div>
+          <p class="assistant-intro">Ask about current watchlist quotes, top gainers, or the selected chart. Answers use the loaded feed, stay on this device, and are not investment recommendations.</p>
+          <div class="assistant-prompts" aria-label="Suggested questions">
+            <button type="button" class="assistant-prompt" data-prompt="Show the top gainers">Top gainers</button>
+            <button type="button" class="assistant-prompt" data-prompt="Summarize the watchlist">Watchlist summary</button>
+            <button type="button" class="assistant-prompt" data-prompt="What is on the intraday chart?">Chart status</button>
+          </div>
+          <ol class="assistant-messages" id="assistantMessages" aria-live="polite" aria-relevant="additions"></ol>
+          <p class="assistant-storage-status" id="assistantStorageStatus" role="status"></p>
+          <form class="assistant-form" id="assistantForm">
+            <label class="visually-hidden" for="assistantInput">Ask the market assistant</label>
+            <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask about your NSE watchlist…" required />
+            <button class="assistant-send" type="submit">Send</button>
+          </form>
+        </section>
       </div>
     </div>
 

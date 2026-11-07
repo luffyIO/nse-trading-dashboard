@@ -4,6 +4,11 @@ const connectionStatus = document.getElementById('connectionStatus');
 const updatedAt = document.getElementById('updatedAt');
 const chartLastPrice = document.getElementById('chartLastPrice');
 const themeToggle = document.getElementById('themeToggle');
+const chartSymbolSelect = document.getElementById('chartSymbolSelect');
+const assistantMessages = document.getElementById('assistantMessages');
+const assistantForm = document.getElementById('assistantForm');
+const assistantInput = document.getElementById('assistantInput');
+const assistantStorageStatus = document.getElementById('assistantStorageStatus');
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
@@ -14,8 +19,14 @@ let refreshTimer;
 const AGENT_HISTORY_KEY = 'indian-market-agent-history-v1';
 const MAX_AGENT_HISTORY_BARS = 1200;
 const THEME_KEY = 'indian-market-dashboard-theme-v1';
+const CHAT_HISTORY_KEY = 'indian-market-dashboard-chat-v1';
+const CHART_SYMBOL_KEY = 'indian-market-dashboard-chart-symbol-v1';
+const MAX_CHAT_MESSAGES = 100;
 let watchlistSortKey = null;
 let watchlistSortDirection = 1;
+let savedChatMessages = [];
+let selectedChartSymbol = '';
+let marketDataRequestId = 0;
 
 function getSavedTheme() {
   try {
@@ -87,6 +98,209 @@ function formatCurrency(value) {
   return Number.isFinite(value) ? currencyFormatter.format(value) : '—';
 }
 
+function renderTopGainers(quotes = []) {
+  const list = document.getElementById('topGainersList');
+  if (!list) return;
+
+  const gainers = quotes
+    .filter((quote) => Number.isFinite(quote.percentChange) && quote.percentChange > 0)
+    .sort((left, right) => right.percentChange - left.percentChange)
+    .slice(0, 3);
+  list.replaceChildren();
+  if (gainers.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'top-gainers-empty';
+    empty.textContent = quotes.length > 0 ? 'No positive movers in the current watchlist.' : 'Waiting for verified quote data.';
+    list.appendChild(empty);
+    return;
+  }
+
+  gainers.forEach((quote, index) => {
+    const item = document.createElement('li');
+    const rank = document.createElement('span');
+    rank.className = 'gainer-rank';
+    rank.textContent = String(index + 1).padStart(2, '0');
+    const symbol = document.createElement('strong');
+    symbol.textContent = quote.symbol;
+    const price = document.createElement('span');
+    price.className = 'gainer-price';
+    price.textContent = formatCurrency(quote.price);
+    const change = document.createElement('strong');
+    change.className = 'gainer-change';
+    change.textContent = `+${quote.percentChange.toFixed(2)}%`;
+    item.append(rank, symbol, price, change);
+    list.appendChild(item);
+  });
+}
+
+function setAssistantStorageStatus(message) {
+  if (assistantStorageStatus) assistantStorageStatus.textContent = message;
+}
+
+function appendAssistantMessage(role, text) {
+  if (!assistantMessages) return;
+  const item = document.createElement('li');
+  item.className = `assistant-message assistant-message-${role}`;
+  const label = document.createElement('span');
+  label.className = 'assistant-message-label';
+  label.textContent = role === 'user' ? 'You' : 'Assistant';
+  const content = document.createElement('p');
+  content.textContent = text;
+  item.append(label, content);
+  assistantMessages.appendChild(item);
+}
+
+function renderAssistantHistory() {
+  if (!assistantMessages) return;
+  assistantMessages.replaceChildren();
+  if (savedChatMessages.length === 0) {
+    appendAssistantMessage(
+      'assistant',
+      'Hi! I can summarize loaded NSE watchlist quotes, list top gainers, and describe the intraday chart. I only use data currently shown on this dashboard.'
+    );
+    return;
+  }
+  savedChatMessages.forEach(({ role, text }) => appendAssistantMessage(role, text));
+}
+
+function loadAssistantHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+    if (!Array.isArray(saved)) throw new Error('Saved chat must be a list of messages.');
+    savedChatMessages = saved
+      .filter((message) => message
+        && (message.role === 'user' || message.role === 'assistant')
+        && typeof message.text === 'string'
+        && message.text.length <= 2000)
+      .slice(-MAX_CHAT_MESSAGES);
+  } catch {
+    savedChatMessages = [];
+    setAssistantStorageStatus('Saved conversation could not be read. New messages will remain visible until this page is refreshed.');
+  }
+  renderAssistantHistory();
+}
+
+function saveAssistantHistory() {
+  try {
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(savedChatMessages));
+    setAssistantStorageStatus('Conversation saved in this browser on this device only.');
+  } catch {
+    setAssistantStorageStatus('Browser storage is unavailable. The conversation will not persist after this page closes.');
+  }
+}
+
+function getWatchlistGainers() {
+  return (window.latestMarketQuotes || [])
+    .filter((quote) => Number.isFinite(quote.percentChange) && quote.percentChange > 0)
+    .sort((left, right) => right.percentChange - left.percentChange);
+}
+
+function getAssistantReply(question) {
+  const normalized = question.toLowerCase();
+  const quotes = window.latestMarketQuotes || [];
+  const tokens = new Set(question.toUpperCase().match(/[A-Z0-9&.-]+/g) || []);
+  const requestedQuotes = quotes.filter((quote) => tokens.has(quote.symbol.toUpperCase()));
+  const dataLabel = window.latestMarketSourceLabel || 'configured market-data feed';
+
+  if (/\b(buy|sell|invest|recommend|should i|target price)\b/.test(normalized)) {
+    return 'I can report observed quotes and indicators, but I can’t recommend trades or predict a target price. Market data can be delayed; use an exchange-authorized source and your own judgment.';
+  }
+  if (/\b(gainer|gainers|top movers|best performers)\b/.test(normalized)) {
+    const gainers = getWatchlistGainers().slice(0, 3);
+    return gainers.length
+      ? `Top positive movers in the configured watchlist: ${gainers.map((quote) => `${quote.symbol} ${formatPercent(quote.percentChange)}`).join(', ')}. These are watchlist-only daily changes, not all NSE listings.`
+      : 'There are no positive movers with verified change data in the current watchlist.';
+  }
+  if (requestedQuotes.length > 0) {
+    return requestedQuotes
+      .map((quote) => `${quote.symbol}: ${formatCurrency(quote.price)}${Number.isFinite(quote.percentChange) ? ` (${formatPercent(quote.percentChange)} today)` : ''}. Updated ${quote.timestamp || 'time not provided by the feed'}.`)
+      .join(' ');
+  }
+  if (/\b(chart|intraday|bars|history)\b/.test(normalized)) {
+    const count = (window.latestMarketChart || []).length;
+    return count > 0
+      ? `${selectedChartSymbol || 'Selected symbol'} has ${count} intraday price points on the chart. The dashboard renders the loaded feed locally; bar availability and delay depend on the provider.`
+      : 'Intraday chart data is currently unavailable. No sample prices are substituted.';
+  }
+  if (/\b(summary|summarize|watchlist|market|status)\b/.test(normalized)) {
+    const summary = quotes
+      .slice(0, 6)
+      .map((quote) => `${quote.symbol} ${formatCurrency(quote.price)}${Number.isFinite(quote.percentChange) ? ` (${formatPercent(quote.percentChange)})` : ''}`)
+      .join('; ');
+    return summary
+      ? `Current watchlist snapshot from ${dataLabel}: ${summary}. NSE session state is ${document.getElementById('marketState')?.textContent || 'unknown'}.`
+      : 'No market quotes are loaded right now. Check the data connection panel; I won’t invent prices.';
+  }
+  return 'Try asking for a symbol quote, “top gainers,” a watchlist summary, or chart status. I answer only from the loaded dashboard data and don’t provide personalized investment advice.';
+}
+
+function submitAssistantMessage(text) {
+  const question = text.trim();
+  if (!question || question.length > 500) return;
+  const reply = getAssistantReply(question);
+  savedChatMessages.push(
+    { role: 'user', text: question },
+    { role: 'assistant', text: reply }
+  );
+  savedChatMessages = savedChatMessages.slice(-MAX_CHAT_MESSAGES);
+  renderAssistantHistory();
+  saveAssistantHistory();
+  assistantMessages?.lastElementChild?.scrollIntoView({ block: 'nearest' });
+}
+
+loadAssistantHistory();
+assistantForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!assistantInput) return;
+  submitAssistantMessage(assistantInput.value);
+  assistantInput.value = '';
+  assistantInput.focus();
+});
+document.querySelectorAll('.assistant-prompt').forEach((button) => {
+  button.addEventListener('click', () => submitAssistantMessage(button.dataset.prompt || ''));
+});
+document.getElementById('assistantClear')?.addEventListener('click', () => {
+  savedChatMessages = [];
+  renderAssistantHistory();
+  try {
+    localStorage.removeItem(CHAT_HISTORY_KEY);
+    setAssistantStorageStatus('Conversation cleared from this browser.');
+  } catch {
+    setAssistantStorageStatus('Could not clear the saved conversation because browser storage is unavailable.');
+  }
+});
+
+function populateChartSymbolSelect(chartSymbols = []) {
+  if (!chartSymbolSelect) return;
+  const symbols = [...new Set(chartSymbols.filter((symbol) => typeof symbol === 'string'))];
+  if (symbols.length === 0) return;
+  chartSymbolSelect.replaceChildren();
+  symbols.forEach((symbol) => {
+    const option = document.createElement('option');
+    option.value = symbol;
+    option.textContent = symbol;
+    chartSymbolSelect.appendChild(option);
+  });
+  if (!symbols.includes(selectedChartSymbol)) selectedChartSymbol = symbols[0];
+  chartSymbolSelect.value = selectedChartSymbol;
+}
+
+chartSymbolSelect?.addEventListener('change', () => {
+  selectedChartSymbol = chartSymbolSelect.value;
+  try {
+    localStorage.setItem(CHART_SYMBOL_KEY, selectedChartSymbol);
+  } catch {
+    setAssistantStorageStatus('Chart symbol preference cannot be saved in this browser.');
+  }
+  loadMarketData();
+});
+
+try {
+  selectedChartSymbol = localStorage.getItem(CHART_SYMBOL_KEY) || '';
+} catch {
+  selectedChartSymbol = '';
+}
+
 function populateWatchlist(quotes = []) {
   const tableBody = document.getElementById('watchlist-body');
   if (!tableBody) return;
@@ -97,7 +311,7 @@ function populateWatchlist(quotes = []) {
     const cell = document.createElement('td');
     cell.colSpan = 4;
     cell.className = 'empty-watchlist';
-    cell.textContent = 'Waiting for authorized NSE quote data.';
+    cell.textContent = 'Waiting for configured NSE quote data.';
     row.appendChild(cell);
     tableBody.appendChild(row);
     return;
@@ -481,17 +695,34 @@ function renderAdaptiveAgent(points, symbol) {
 function setMarketData(data) {
   const quotes = data.quotes || [];
   window.latestMarketChart = data.chart || [];
+  window.latestMarketQuotes = quotes;
+  selectedChartSymbol = data.chartSymbol || selectedChartSymbol;
+  window.latestMarketSourceLabel = data.provider || data.source || 'configured market-data feed';
+  populateChartSymbolSelect(data.chartSymbols || quotes.map((quote) => quote.symbol));
   const primary = quotes.find((quote) => quote.symbol === data.chartSymbol);
   const isConnected = data.configured && quotes.length > 0;
   const isYahoo = data.source === 'yahoo-finance-unofficial';
-  const providerName = isYahoo ? 'Yahoo Finance · unofficial' : 'Twelve Data';
-  const badgeLabel = isConnected ? isYahoo ? 'Yahoo · unofficial' : 'NSE · provider feed' : 'Feed unavailable';
+  const isAlphaVantage = data.source === 'alpha-vantage';
+  const providerName = isYahoo
+    ? 'Yahoo Finance · unofficial'
+    : isAlphaVantage
+      ? 'Alpha Vantage · delayed snapshot'
+      : 'Twelve Data';
+  const badgeLabel = isConnected
+    ? isYahoo ? 'Yahoo · unofficial' : isAlphaVantage ? 'Alpha Vantage · snapshot' : 'NSE · provider feed'
+    : 'Feed unavailable';
 
   setConnectionStatus(
     isConnected ? providerName : data.configured ? 'Provider error' : 'Data not configured',
-    isConnected ? isYahoo ? 'delayed' : 'connected' : 'offline'
+    isConnected ? isYahoo || isAlphaVantage ? 'delayed' : 'connected' : 'offline'
   );
-  setText('feedLabel', isConnected ? isYahoo ? 'Unofficial feed · latency unknown' : 'Quote feed connected' : 'Provider feed required');
+  setText('feedLabel', isConnected
+    ? isYahoo
+      ? 'Unofficial feed · latency unknown'
+      : isAlphaVantage
+        ? 'Snapshot · market/plan dependent'
+        : 'Quote feed connected'
+    : 'Provider feed required');
   setText('watchlistStatus', badgeLabel);
   setText('primaryQuoteSymbol', primary ? `${primary.symbol} · NSE` : `${data.chartSymbol || 'NSE'} · NSE`);
   setText('primaryQuotePrice', primary ? formatCurrency(primary.price) : '—');
@@ -531,7 +762,7 @@ function setMarketData(data) {
   const feedMessage = document.getElementById('feedMessage');
   if (feedMessage) {
     const partialErrors = (data.errors || []).join(' · ');
-    feedMessage.textContent = isConnected && isYahoo
+    feedMessage.textContent = isConnected && (isYahoo || isAlphaVantage)
       ? `${data.disclaimer || 'Unofficial market data; real-time access is not guaranteed.'}${partialErrors ? ` Some requests failed: ${partialErrors}` : ''}`
       : isConnected
         ? partialErrors
@@ -542,6 +773,7 @@ function setMarketData(data) {
   }
 
   populateWatchlist(quotes);
+  renderTopGainers(quotes);
   renderChart(data.chart || []);
   renderStrategies(data.chart || [], data.chartSymbol || 'NSE');
 
@@ -549,7 +781,8 @@ function setMarketData(data) {
   refreshTimer = setTimeout(loadMarketData, Math.max(30, Number(data.refreshSeconds) || 60) * 1000);
 }
 
-async function loadMarketData() {
+async function loadMarketData(chartSymbol = selectedChartSymbol) {
+  const requestId = ++marketDataRequestId;
   const configuredApiBase = String(window.MARKET_API_BASE_URL || '').trim().replace(/\/+$/, '');
   if (window.location.protocol === 'file:' && !configuredApiBase) {
     setConnectionStatus('Open dashboard through local server', 'offline');
@@ -557,15 +790,18 @@ async function loadMarketData() {
     setText('watchlistStatus', 'Feed unavailable');
     setText('feedMessage', 'This page was opened directly from disk. Start the server with npm start, then open http://localhost:3000/ so the dashboard can securely reach the market-data API.');
     populateWatchlist();
+    renderTopGainers();
     renderChart([]);
     renderStrategies([], 'NSE');
     return;
   }
 
   try {
-    const apiUrl = configuredApiBase
+    const apiBase = configuredApiBase
       ? `${configuredApiBase}/api/market-data`
       : '/api/market-data';
+    const apiUrl = new URL(apiBase, window.location.origin);
+    if (chartSymbol) apiUrl.searchParams.set('symbol', chartSymbol);
     const response = await fetch(apiUrl, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Market data service returned HTTP ${response.status}`);
@@ -574,8 +810,10 @@ async function loadMarketData() {
       throw new Error('Market data API did not return JSON. Open the dashboard through the Node server.');
     }
     const data = await response.json();
+    if (requestId !== marketDataRequestId) return;
     setMarketData(data);
   } catch (error) {
+    if (requestId !== marketDataRequestId) return;
     setConnectionStatus('Provider unavailable', 'offline');
     setText('feedLabel', 'Unable to reach data service');
     setText('watchlistStatus', 'Feed unavailable');
@@ -586,6 +824,7 @@ async function loadMarketData() {
     setText('marketState', 'UNKNOWN');
     setText('chartLastPrice', '—');
     populateWatchlist();
+    renderTopGainers();
     renderChart([]);
     renderStrategies([], 'NSE');
     clearTimeout(refreshTimer);

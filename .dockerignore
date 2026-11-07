@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+!.env.oracle.example
+node_modules
+npm-debug.log*
+release
+dist
+.git
+.github
+.vscode
+test
+electron
