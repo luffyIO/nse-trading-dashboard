@@ -12,6 +12,10 @@ test('defines installable desktop builds for Windows, macOS, and Linux', () => {
   assert.match(packageJson.scripts['dist:win'], /--win nsis/);
   assert.match(packageJson.scripts['dist:mac'], /--mac dmg/);
   assert.match(packageJson.scripts['dist:linux'], /AppImage deb/);
+  assert.ok(
+    ['dist:win', 'dist:mac', 'dist:linux'].every((script) => /--publish never/.test(packageJson.scripts[script]))
+  );
+  assert.match(packageJson.author, /<[^>]+@[^>]+>/);
   assert.equal(packageJson.build.productName, 'NSE Trading Dashboard');
 });
 

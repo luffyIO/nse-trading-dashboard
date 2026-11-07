@@ -1,6 +1,6 @@
 {
   "name": "trading-bot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NSE market dashboard with paper-only strategy research",
   "productName": "NSE Trading Dashboard",
   "main": "electron/main.js",
@@ -10,12 +10,12 @@
     "test": "node --test",
     "build:pages": "node build-pages.js",
     "desktop": "electron .",
-    "dist:win": "electron-builder --win nsis --x64",
-    "dist:mac": "electron-builder --mac dmg --universal",
-    "dist:linux": "electron-builder --linux AppImage deb --x64"
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --universal --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --x64 --publish never"
   },
   "keywords": [],
-  "author": "",
+  "author": "luffyIO <116873883+luffyIO@users.noreply.github.com>",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
