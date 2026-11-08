@@ -840,6 +840,17 @@ body {
   font-size: 0.74rem;
 }
 
+.market-overview {
+  min-width: 0;
+}
+
+.market-heading-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
 .session-meta {
   display: flex;
   align-items: center;
@@ -2166,12 +2177,11 @@ html[data-theme="light"] .assistant-form button {
 
 .market-controls {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-end;
-  gap: 18px;
 }
 
-.market-controls .chart-symbol-control select {
+.market-exchange-control select {
   min-width: 260px;
 }
 
@@ -2240,20 +2250,8 @@ html[data-theme="light"] .assistant-form button {
     grid-column: 1 / -1;
   }
 
-  .market-controls {
-    width: 100%;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .market-controls .chart-symbol-control,
-  .market-controls .chart-symbol-control select {
-    width: 100%;
-  }
-
-  .market-controls .chart-symbol-control select {
-    min-width: 0;
+  .market-exchange-control select {
+    min-width: min(260px, calc(100vw - 48px));
   }
 
   .fx-converter {

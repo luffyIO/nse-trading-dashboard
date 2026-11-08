@@ -782,7 +782,6 @@ function setMarketData(data) {
     : 'Provider feed required');
   setText('watchlistStatus', badgeLabel);
   setText('marketContext', selectedExchange);
-  setText('marketTitle', `${selectedExchange} market overview`);
   setText('selectedExchangeLabel', selectedExchange);
   setText('chartExchangeLabel', selectedExchange);
   setText('primaryQuoteSymbol', primary ? `${primary.symbol} · ${selectedExchange}` : `${data.chartSymbol || selectedExchange} · ${selectedExchange}`);

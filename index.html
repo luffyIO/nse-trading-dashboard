@@ -36,19 +36,21 @@
         </header>
 
         <section class="toolbar">
-          <div>
+          <div class="market-overview">
             <div class="toolbar-label">Indian equities</div>
-            <h2 id="marketTitle">NSE market overview</h2>
+            <div class="market-heading-line">
+              <h2 id="marketTitle">Market overview</h2>
+              <label class="chart-symbol-control market-exchange-control" for="exchangeSelect">
+                <span>Exchange</span>
+                <select id="exchangeSelect" aria-label="Select NSE or BSE market">
+                  <option value="NSE">NSE · National Stock Exchange</option>
+                  <option value="BSE">BSE · Bombay Stock Exchange</option>
+                </select>
+              </label>
+            </div>
             <div class="toolbar-note">Feed coverage and delay depend on your provider; the free fallback is unofficial.</div>
           </div>
           <div class="market-controls">
-            <label class="chart-symbol-control" for="exchangeSelect">
-              <span>Exchange</span>
-              <select id="exchangeSelect" aria-label="Select NSE or BSE market">
-                <option value="NSE">NSE · National Stock Exchange</option>
-                <option value="BSE">BSE · Bombay Stock Exchange</option>
-              </select>
-            </label>
             <div class="session-meta">
               <span class="session-dot"></span>
               <span>Last updated <strong id="updatedAt">—</strong></span>
