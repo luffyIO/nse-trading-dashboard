@@ -70,6 +70,14 @@ test('builds a Pages artifact with an HTTPS backend URL and no server source', (
   }
 });
 
+test('configures Render CORS for GitHub Pages and the Android WebView origin', () => {
+  const renderConfig = fs.readFileSync(path.join(__dirname, '..', 'render.yaml'), 'utf8');
+  assert.match(
+    renderConfig,
+    /key: CORS_ALLOWED_ORIGINS\s+value: "https:\/\/luffyio\.github\.io,https:\/\/localhost"/
+  );
+});
+
 test('rate limits repeated API requests and supplies a retry interval', () => {
   const middleware = createRateLimiter({ windowMs: 60000, maxRequests: 2 });
   const makeRequest = (ip) => {
