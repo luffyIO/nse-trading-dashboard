@@ -62,7 +62,7 @@ $env:MARKET_API_BASE_URL = "https://your-market-api.example.com"
 npm run build:android
 ```
 
-The installable debug-signed APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. The API allows Capacitor's `https://localhost` WebView origin and still requires browser dashboard origins to be listed in `CORS_ALLOWED_ORIGINS`. The APK is intended for direct installation/testing; it is not signed with a Play Store release key.
+The installable debug-signed APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. The Render blueprint allows the GitHub Pages site and Capacitor's `https://localhost` WebView origin by default; add any custom hosting origin to `CORS_ALLOWED_ORIGINS`. The APK is intended for direct installation/testing; it is not signed with a Play Store release key.
 
 The GitHub Actions workflow builds Windows, macOS, Linux, and Android installers. Set the repository Actions variable `MARKET_API_BASE_URL` to the deployed HTTPS API origin before running the workflow. Run it manually to download workflow artifacts, or push a `v*` tag to publish all successful installer artifacts in a GitHub Release. Desktop builds are unsigned: Windows may show SmartScreen warnings, and macOS may require approval for an app from an unidentified developer. Signing/notarization credentials are not included. The desktop and Android apps are clients for market-data sources, not brokers or trade-execution programs.
 
