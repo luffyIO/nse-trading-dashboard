@@ -1,12 +1,14 @@
 # Indian Market Dashboard
 
-Responsive NSE dashboard with a private, persistent market chat, watchlist movers, selectable intraday charts, dark/light themes, and an educational paper-strategy lab. It can use Twelve Data, a carefully mapped Alpha Vantage quote feed, or Yahoo Finance's public chart endpoint as a free, unofficial fallback. It is read-only and does not place trades or connect to a brokerage account.
+Responsive NSE and BSE dashboard with a private, persistent market chat, exchange-specific watchlists, selectable intraday charts, an indicative USD/INR converter, dark/light themes, and an educational paper-strategy lab. It can use Twelve Data, carefully mapped Alpha Vantage quotes, or Yahoo Finance's public chart endpoint as a free, unofficial fallback. It is read-only and does not place trades or connect to a brokerage account.
 
 ## Features
 
 - **Market assistant:** Local, chat-style summaries of loaded quotes, watchlist gainers, and the selected chart. History is kept in this browser's local storage; messages are not sent to an AI service.
 - **Watchlist gainers:** Highlights positive daily performers within the configured watchlist (not the whole NSE).
-- **Selectable intraday chart:** Switch the existing custom SVG 5-minute chart between configured NSE symbols.
+- **NSE and BSE watchlists:** Switch exchanges; quote and chart symbols are requested for the selected exchange.
+- **Selectable intraday chart:** Switch the existing custom SVG 5-minute chart between configured symbols for the selected exchange.
+- **USD/INR reference and converter:** Displays the configured provider's FX quote timestamp when available and calculates an indicative conversion locally. It is not a guaranteed live or executable exchange rate.
 - **Market data providers:** Optional Twelve Data and Alpha Vantage quote support with Yahoo Finance fallback. Data availability and delay depend on provider and account entitlements; no real-time guarantee is made.
 - **Saved themes and conversations:** Dark/light theme and chat history persist on the device.
 - **Responsive accessible UI:** Keyboard-operable controls and layouts for desktop and mobile.
@@ -54,7 +56,7 @@ The cross-platform GitHub Actions workflow builds each installer on its native r
 
 The dashboard adds saved dark/light themes and sortable watchlist columns (symbol, price, daily change, and update time). Sorting changes only the display order and does not affect quote values or strategy calculations.
 
-Optional: configure Twelve Data as the primary source. Create an account and API key at [twelvedata.com](https://twelvedata.com/), then copy `.env.example` to `.env` and set `TWELVE_DATA_API_KEY`. Confirm the plan grants access to NSE symbols and real-time data if required; exchange entitlements and latency depend on your subscription.
+Optional: configure Twelve Data as the primary source. Create an account and API key at [twelvedata.com](https://twelvedata.com/), then copy `.env.example` to `.env` and set `TWELVE_DATA_API_KEY`. Confirm the plan grants access to the selected NSE or BSE symbols and the data freshness you need; exchange entitlements and latency depend on your subscription.
 
 Example `.env`:
 
@@ -63,23 +65,26 @@ TWELVE_DATA_API_KEY=your_api_key
 ALPHA_VANTAGE_API_KEY=
 ALPHA_VANTAGE_SYMBOL_MAP=
 NSE_WATCHLIST=RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
+BSE_WATCHLIST=RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
 MARKET_DATA_REFRESH_SECONDS=60
 PORT=3000
 ```
 
-`NSE_WATCHLIST` accepts up to six comma-separated NSE ticker symbols. The chart defaults to the first symbol, and can be changed in the dashboard. `MARKET_DATA_REFRESH_SECONDS` controls normal caching and polling; the minimum is 30 seconds. When Alpha Vantage is used as the primary quote provider, the dashboard refreshes its quote snapshot no more frequently than every six hours to limit free-tier requests (six symbols × four updates = 24 requests/day). Alpha Vantage does not identify exchange/currency in its quote response, so the optional `ALPHA_VANTAGE_SYMBOL_MAP` must explicitly map every watchlist symbol to a provider symbol that you have independently verified as NSE-listed and INR-denominated. For example, each JSON value must have `{"symbol":"<verified provider ticker>","exchange":"NSE","currency":"INR"}`. Do not infer this mapping from a matching ticker name. Alpha Vantage does not provide the dashboard's chart or FX data in this configuration.
+`NSE_WATCHLIST` and `BSE_WATCHLIST` each accept up to six comma-separated symbols listed on that exchange. The chart defaults to the first symbol in the selected market; change the exchange and chart symbol in the dashboard. Confirm every symbol is available through the selected provider and exchange. `MARKET_DATA_REFRESH_SECONDS` controls the API cache and browser polling; the minimum is 30 seconds. The configured FX quote is refreshed at this interval when the provider responds, but the upstream timestamp, latency, market hours, and entitlement are provider-dependent. No source is guaranteed to deliver a real-time or executable USD/INR rate.
 
-Yahoo's public chart endpoint supplies the fallback quotes, 1-day/5-minute bars, and USD/INR rate. It is unofficial, can change or rate-limit requests, and does not promise real-time prices. Review Yahoo's applicable terms and do not redistribute the data. Do not treat it as an exchange-authorized real-time feed.
+When Alpha Vantage is used, quote snapshots are cached for six hours to limit requests. Alpha Vantage does not identify exchange/currency in its quote response, so every configured symbol needs an operator-verified mapping to its actual provider ticker, exchange, and INR denomination. An unprefixed key maps NSE by default; prefix keys with `BSE:` when the same ticker needs a separate BSE mapping, for example `{"RELIANCE":{"symbol":"<verified NSE ticker>","exchange":"NSE","currency":"INR"},"BSE:RELIANCE":{"symbol":"<verified BSE ticker>","exchange":"BSE","currency":"INR"}}`. Do not infer exchange coverage from a matching ticker name. Alpha Vantage does not supply the dashboard chart or FX quote in this setup.
+
+Yahoo's public chart endpoint supplies fallback quotes (`.NS` for NSE and `.BO` for BSE), 1-day/5-minute bars, and a USD/INR reference quote. It is unofficial, can change or rate-limit requests, and does not promise real-time prices or conversion rates. Review Yahoo's applicable terms and do not redistribute the data. Do not treat it as an exchange-authorized real-time feed.
 
 If configured providers and Yahoo are unavailable, the dashboard shows a clear unavailable state; it does not substitute invented prices. Do not commit `.env` or expose provider credentials in browser code.
 
 ## Data and limitations
 
-- Free fallback: Yahoo Finance's public chart endpoint (`.NS` NSE symbols and `USDINR=X`). It is unofficial and has no real-time guarantee or availability SLA.
-- Optional primary source: Twelve Data for NSE quotes, five-minute bars, and USD/INR; plan permissions, rate limits, and exchange entitlement charges may apply.
-- Optional mapped quote source: Alpha Vantage's `GLOBAL_QUOTE` snapshots, only when every watchlist ticker has an operator-verified symbol mapping. Its quote response itself does not verify NSE exchange or INR currency. The dashboard therefore requires explicit mapping declarations and still makes no real-time claim.
-- Refresh defaults to 60 seconds for the normal feed; the Alpha Vantage-only quote snapshot is cached for six hours. Polling more often does not make an upstream feed real-time.
-- Yahoo Finance does not provide authoritative NSE session state here, so session status remains unknown.
+- Free fallback: Yahoo Finance's public chart endpoint (`.NS` NSE, `.BO` BSE, and `USDINR=X`). It is unofficial and has no real-time guarantee or availability SLA.
+- Optional primary source: Twelve Data for exchange-specific quotes and five-minute bars and a USD/INR reference rate; account permissions, rate limits, and exchange entitlements may apply separately to NSE and BSE.
+- Optional mapped quote source: Alpha Vantage's `GLOBAL_QUOTE` snapshots, only when every selected watchlist ticker has an operator-verified symbol mapping. Its response does not itself verify exchange or currency. Quote snapshots are cached for six hours; chart and FX data use the unofficial Yahoo Finance feed.
+- The displayed USD/INR value is an indicative data-provider quote, not an assured live bank, broker, remittance, or executable conversion rate. Its timestamp may be missing or stale, and refresh polling does not control upstream freshness.
+- Neither fallback feed provides authoritative exchange session state here, so session status remains unknown unless an entitled provider confirms it.
 - Dhan's official API documentation states that Data APIs have additional charges; do not assume broker API access means free live market data.
 - The dashboard is informational only, not a trading signal service, broker connection, or execution system.
 
@@ -141,6 +146,6 @@ This is not a self-modifying neural network or an execution bot. It does not sub
 
 ## API endpoints
 
-- `GET /api/health` — selected provider mode and watchlist
-- `GET /api/status` — current primary instrument status
-- `GET /api/market-data` — stock watchlist, chart series, and USD/INR
+- `GET /api/health` — provider mode and NSE/BSE watchlists
+- `GET /api/status?exchange=NSE|BSE` — selected market's primary instrument status
+- `GET /api/market-data?exchange=NSE|BSE&symbol=SYMBOL` — selected exchange watchlist, chart series, and USD/INR reference quote

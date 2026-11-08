@@ -13,7 +13,7 @@
           <div class="brand-wrap">
             <div class="brand-mark">⚡</div>
             <div class="brand-copy">
-              <span class="eyebrow">Indian equities · NSE</span>
+              <span class="eyebrow">Indian equity markets · NSE &amp; BSE</span>
               <h1>MARKET DASHBOARD</h1>
             </div>
           </div>
@@ -21,7 +21,7 @@
           <div class="header-meta">
             <div class="live-pill is-offline" id="connectionStatus"><span class="pulse"></span> Data not configured</div>
             <div class="status-strip">
-              <span>NSE</span>
+              <span id="marketContext">NSE</span>
               <span>|</span>
               <span>INR</span>
               <span>|</span>
@@ -38,12 +38,21 @@
         <section class="toolbar">
           <div>
             <div class="toolbar-label">Indian equities</div>
-            <h2>NSE market overview</h2>
+            <h2 id="marketTitle">NSE market overview</h2>
             <div class="toolbar-note">Feed coverage and delay depend on your provider; the free fallback is unofficial.</div>
           </div>
-          <div class="session-meta">
-            <span class="session-dot"></span>
-            <span>Last updated <strong id="updatedAt">—</strong></span>
+          <div class="market-controls">
+            <label class="chart-symbol-control" for="exchangeSelect">
+              <span>Exchange</span>
+              <select id="exchangeSelect" aria-label="Select NSE or BSE market">
+                <option value="NSE">NSE · National Stock Exchange</option>
+                <option value="BSE">BSE · Bombay Stock Exchange</option>
+              </select>
+            </label>
+            <div class="session-meta">
+              <span class="session-dot"></span>
+              <span>Last updated <strong id="updatedAt">—</strong></span>
+            </div>
           </div>
         </section>
 
@@ -58,20 +67,26 @@
             <div class="stat-value" id="primaryQuoteChange">—</div>
           </article>
 
-          <article class="stat-box">
-            <div class="tiny-label">USD / INR</div>
+          <article class="stat-box fx-stat-box">
+            <div class="tiny-label">USD → INR · indicative</div>
             <div class="stat-value" id="exchangeRate">—</div>
+            <div class="fx-converter">
+              <label for="usdAmount">Convert USD</label>
+              <input id="usdAmount" type="number" min="0" step="any" value="1" inputmode="decimal" aria-label="US dollar amount to convert to Indian rupees" />
+              <output id="inrAmount" for="usdAmount exchangeRate" aria-live="polite">—</output>
+            </div>
+            <div class="fx-rate-meta" id="exchangeRateMeta">Provider reference · freshness varies</div>
           </article>
 
           <article class="stat-box market-box">
-            <div class="tiny-label">NSE session</div>
+            <div class="tiny-label"><span id="selectedExchangeLabel">NSE</span> session</div>
             <div class="stat-value market-closed" id="marketState">—</div>
           </article>
         </section>
 
         <div class="chart-header">
           <div class="chart-title">
-            <span class="panel-kicker">NSE · 5-minute bars</span>
+            <span class="panel-kicker"><span id="chartExchangeLabel">NSE</span> · 5-minute bars</span>
             <span class="dash-title"><span id="chartSymbol">RELIANCE</span> <span class="chart-description">Intraday price</span></span>
           </div>
           <label class="chart-symbol-control" for="chartSymbolSelect">
@@ -102,7 +117,7 @@
             <div>
               <span class="panel-kicker">Research workspace · Educational only</span>
               <h2 id="strategyTitle">Strategy lab</h2>
-              <p>Three concise strategy snapshots for the selected NSE symbol.</p>
+              <p>Three concise strategy snapshots for the selected exchange symbol.</p>
             </div>
             <div class="strategy-labels">
               <span class="strategy-tag backtest-tag">Historical · backtest</span>
@@ -291,7 +306,7 @@
             <div class="signal-box">
               <div class="signal-label">Configured provider · fallback varies</div>
               <p id="feedMessage">
-                Connecting to the configured NSE quote, chart, and USD/INR data sources.
+                  Connecting to the selected exchange, chart, and USD/INR data sources.
               </p>
             </div>
 
@@ -319,7 +334,7 @@
           <p class="assistant-storage-status" id="assistantStorageStatus" role="status"></p>
           <form class="assistant-form" id="assistantForm">
             <label class="visually-hidden" for="assistantInput">Ask the market assistant</label>
-            <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask about your NSE watchlist…" required />
+            <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask about your selected market watchlist…" required />
             <button class="assistant-send" type="submit">Send</button>
           </form>
         </section>

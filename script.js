@@ -5,6 +5,8 @@ const updatedAt = document.getElementById('updatedAt');
 const chartLastPrice = document.getElementById('chartLastPrice');
 const themeToggle = document.getElementById('themeToggle');
 const chartSymbolSelect = document.getElementById('chartSymbolSelect');
+const exchangeSelect = document.getElementById('exchangeSelect');
+const usdAmount = document.getElementById('usdAmount');
 const assistantMessages = document.getElementById('assistantMessages');
 const assistantForm = document.getElementById('assistantForm');
 const assistantInput = document.getElementById('assistantInput');
@@ -21,12 +23,20 @@ const MAX_AGENT_HISTORY_BARS = 1200;
 const THEME_KEY = 'indian-market-dashboard-theme-v1';
 const CHAT_HISTORY_KEY = 'indian-market-dashboard-chat-v1';
 const CHART_SYMBOL_KEY = 'indian-market-dashboard-chart-symbol-v1';
+const EXCHANGE_KEY = 'indian-market-dashboard-exchange-v1';
 const MAX_CHAT_MESSAGES = 100;
 let watchlistSortKey = null;
 let watchlistSortDirection = 1;
 let savedChatMessages = [];
 let selectedChartSymbol = '';
+let selectedExchange = 'NSE';
 let marketDataRequestId = 0;
+try {
+  const savedExchange = localStorage.getItem(EXCHANGE_KEY);
+  if (savedExchange === 'NSE' || savedExchange === 'BSE') selectedExchange = savedExchange;
+} catch {
+  selectedExchange = 'NSE';
+}
 
 function getSavedTheme() {
   try {
@@ -156,7 +166,7 @@ function renderAssistantHistory() {
   if (savedChatMessages.length === 0) {
     appendAssistantMessage(
       'assistant',
-      'Hi! I can summarize loaded NSE watchlist quotes, list top gainers, and describe the intraday chart. I only use data currently shown on this dashboard.'
+      'Hi! I can summarize loaded market-watchlist quotes, list top gainers, and describe the intraday chart. I only use data currently shown on this dashboard.'
     );
     return;
   }
@@ -208,8 +218,14 @@ function getAssistantReply(question) {
   if (/\b(gainer|gainers|top movers|best performers)\b/.test(normalized)) {
     const gainers = getWatchlistGainers().slice(0, 3);
     return gainers.length
-      ? `Top positive movers in the configured watchlist: ${gainers.map((quote) => `${quote.symbol} ${formatPercent(quote.percentChange)}`).join(', ')}. These are watchlist-only daily changes, not all NSE listings.`
+      ? `Top positive movers in the configured ${selectedExchange} watchlist: ${gainers.map((quote) => `${quote.symbol} ${formatPercent(quote.percentChange)}`).join(', ')}. These are watchlist-only daily changes, not the whole exchange.`
       : 'There are no positive movers with verified change data in the current watchlist.';
+  }
+  if (/\b(usd|inr|exchange rate|convert|conversion)\b/.test(normalized)) {
+    const rate = window.latestExchangeRate;
+    return Number.isFinite(rate)
+      ? `The loaded USD/INR reference rate is ${rate.toFixed(4)} INR per USD${window.latestExchangeRateUpdatedAt ? `, with the provider timestamp ${window.latestExchangeRateUpdatedAt}` : ''}. This is an indicative provider quote, not a guaranteed live executable conversion rate.`
+      : 'The USD/INR provider quote is currently unavailable. No conversion rate is estimated.';
   }
   if (requestedQuotes.length > 0) {
     return requestedQuotes
@@ -228,7 +244,7 @@ function getAssistantReply(question) {
       .map((quote) => `${quote.symbol} ${formatCurrency(quote.price)}${Number.isFinite(quote.percentChange) ? ` (${formatPercent(quote.percentChange)})` : ''}`)
       .join('; ');
     return summary
-      ? `Current watchlist snapshot from ${dataLabel}: ${summary}. NSE session state is ${document.getElementById('marketState')?.textContent || 'unknown'}.`
+      ? `Current ${selectedExchange} watchlist snapshot from ${dataLabel}: ${summary}. ${selectedExchange} session state is ${document.getElementById('marketState')?.textContent || 'unknown'}.`
       : 'No market quotes are loaded right now. Check the data connection panel; I won’t invent prices.';
   }
   return 'Try asking for a symbol quote, “top gainers,” a watchlist summary, or chart status. I answer only from the loaded dashboard data and don’t provide personalized investment advice.';
@@ -281,14 +297,22 @@ function populateChartSymbolSelect(chartSymbols = []) {
     option.textContent = symbol;
     chartSymbolSelect.appendChild(option);
   });
-  if (!symbols.includes(selectedChartSymbol)) selectedChartSymbol = symbols[0];
+  if (!symbols.includes(selectedChartSymbol)) {
+    try {
+      selectedChartSymbol = localStorage.getItem(`${CHART_SYMBOL_KEY}:${selectedExchange}`) || '';
+    } catch {
+      selectedChartSymbol = '';
+    }
+    if (!symbols.includes(selectedChartSymbol)) selectedChartSymbol = symbols[0];
+  }
   chartSymbolSelect.value = selectedChartSymbol;
 }
 
 chartSymbolSelect?.addEventListener('change', () => {
   selectedChartSymbol = chartSymbolSelect.value;
   try {
-    localStorage.setItem(CHART_SYMBOL_KEY, selectedChartSymbol);
+    localStorage.setItem(`${CHART_SYMBOL_KEY}:${selectedExchange}`, selectedChartSymbol);
+    if (selectedExchange === 'NSE') localStorage.setItem(CHART_SYMBOL_KEY, selectedChartSymbol);
   } catch {
     setAssistantStorageStatus('Chart symbol preference cannot be saved in this browser.');
   }
@@ -296,10 +320,37 @@ chartSymbolSelect?.addEventListener('change', () => {
 });
 
 try {
-  selectedChartSymbol = localStorage.getItem(CHART_SYMBOL_KEY) || '';
+  selectedChartSymbol = localStorage.getItem(`${CHART_SYMBOL_KEY}:${selectedExchange}`)
+    || (selectedExchange === 'NSE' ? localStorage.getItem(CHART_SYMBOL_KEY) : '')
+    || '';
 } catch {
   selectedChartSymbol = '';
 }
+
+if (exchangeSelect) exchangeSelect.value = selectedExchange;
+exchangeSelect?.addEventListener('change', () => {
+  selectedExchange = exchangeSelect.value === 'BSE' ? 'BSE' : 'NSE';
+  selectedChartSymbol = '';
+  try {
+    localStorage.setItem(EXCHANGE_KEY, selectedExchange);
+  } catch {
+    setAssistantStorageStatus('Exchange preference cannot be saved in this browser.');
+  }
+  loadMarketData('', selectedExchange);
+});
+
+function updateCurrencyConversion() {
+  const output = document.getElementById('inrAmount');
+  const usdText = usdAmount?.value.trim() || '';
+  const usd = usdText ? Number(usdText) : Number.NaN;
+  const rate = window.latestExchangeRate;
+  if (!output) return;
+  output.textContent = Number.isFinite(usd) && usd >= 0 && Number.isFinite(rate)
+    ? formatCurrency(usd * rate)
+    : '—';
+}
+
+usdAmount?.addEventListener('input', updateCurrencyConversion);
 
 function populateWatchlist(quotes = []) {
   const tableBody = document.getElementById('watchlist-body');
@@ -311,7 +362,7 @@ function populateWatchlist(quotes = []) {
     const cell = document.createElement('td');
     cell.colSpan = 4;
     cell.className = 'empty-watchlist';
-    cell.textContent = 'Waiting for configured NSE quote data.';
+    cell.textContent = `Waiting for configured ${selectedExchange} quote data.`;
     row.appendChild(cell);
     tableBody.appendChild(row);
     return;
@@ -409,7 +460,7 @@ function renderChart(points) {
       'font-family': 'Inter, sans-serif',
       'text-anchor': 'middle'
     });
-    message.textContent = 'Chart data will appear when the NSE feed is configured.';
+    message.textContent = `Chart data will appear when the ${selectedExchange} feed is configured.`;
     svg.appendChild(message);
     return;
   }
@@ -582,7 +633,7 @@ function renderStrategies(points, symbol) {
   setText('scenarioQuickClose', scenario ? formatCurrency(scenario.lastClose) : '—');
   setText('scenarioCondition', scenario?.condition || 'Waiting for at least 21 valid closes to calculate indicators.');
   setText('scenarioInvalidation', scenario?.invalidation || 'No scenario is active.');
-  renderAdaptiveAgent(points, symbol);
+  renderAdaptiveAgent(points, symbol, selectedExchange);
 }
 
 function mergeAgentHistory(symbol, freshPoints) {
@@ -644,10 +695,12 @@ function mergeAgentHistory(symbol, freshPoints) {
   }
 }
 
-function renderAdaptiveAgent(points, symbol) {
+function renderAdaptiveAgent(points, symbol, exchange) {
   if (!window.StrategyEngine?.trainAdaptiveAgent) return;
 
-  const history = mergeAgentHistory(symbol || 'NSE', points);
+  const historySymbol = symbol || exchange;
+  const historyKey = exchange === 'BSE' ? `BSE:${historySymbol}` : historySymbol || 'NSE';
+  const history = mergeAgentHistory(historyKey, points);
   const result = window.StrategyEngine.trainAdaptiveAgent(history.points);
   const trained = result.status === 'trained';
   const validation = result.validation;
@@ -694,10 +747,14 @@ function renderAdaptiveAgent(points, symbol) {
 
 function setMarketData(data) {
   const quotes = data.quotes || [];
+  selectedExchange = data.exchange === 'BSE' ? 'BSE' : 'NSE';
+  if (exchangeSelect) exchangeSelect.value = selectedExchange;
   window.latestMarketChart = data.chart || [];
   window.latestMarketQuotes = quotes;
   selectedChartSymbol = data.chartSymbol || selectedChartSymbol;
   window.latestMarketSourceLabel = data.provider || data.source || 'configured market-data feed';
+  window.latestExchangeRate = Number.isFinite(data.exchangeRate) ? data.exchangeRate : null;
+  window.latestExchangeRateUpdatedAt = data.exchangeRateUpdatedAt || null;
   populateChartSymbolSelect(data.chartSymbols || quotes.map((quote) => quote.symbol));
   const primary = quotes.find((quote) => quote.symbol === data.chartSymbol);
   const isConnected = data.configured && quotes.length > 0;
@@ -709,7 +766,7 @@ function setMarketData(data) {
       ? 'Alpha Vantage · delayed snapshot'
       : 'Twelve Data';
   const badgeLabel = isConnected
-    ? isYahoo ? 'Yahoo · unofficial' : isAlphaVantage ? 'Alpha Vantage · snapshot' : 'NSE · provider feed'
+    ? isYahoo ? 'Yahoo · unofficial' : isAlphaVantage ? 'Alpha Vantage · snapshot' : `${selectedExchange} · provider feed`
     : 'Feed unavailable';
 
   setConnectionStatus(
@@ -724,7 +781,11 @@ function setMarketData(data) {
         : 'Quote feed connected'
     : 'Provider feed required');
   setText('watchlistStatus', badgeLabel);
-  setText('primaryQuoteSymbol', primary ? `${primary.symbol} · NSE` : `${data.chartSymbol || 'NSE'} · NSE`);
+  setText('marketContext', selectedExchange);
+  setText('marketTitle', `${selectedExchange} market overview`);
+  setText('selectedExchangeLabel', selectedExchange);
+  setText('chartExchangeLabel', selectedExchange);
+  setText('primaryQuoteSymbol', primary ? `${primary.symbol} · ${selectedExchange}` : `${data.chartSymbol || selectedExchange} · ${selectedExchange}`);
   setText('primaryQuotePrice', primary ? formatCurrency(primary.price) : '—');
 
   const dayChange = primary && Number.isFinite(primary.percentChange)
@@ -738,7 +799,19 @@ function setMarketData(data) {
   }
 
   setText('exchangeRate', Number.isFinite(data.exchangeRate) ? data.exchangeRate.toFixed(4) : '—');
-  setText('chartSymbol', data.chartSymbol || 'NSE');
+  const rateTimestamp = data.exchangeRateUpdatedAt
+    ? new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(new Date(data.exchangeRateUpdatedAt))
+    : null;
+  setText('exchangeRateMeta', Number.isFinite(data.exchangeRate)
+    ? `${data.exchangeRateSource || data.provider || 'Provider'} · ${rateTimestamp ? `quote time ${rateTimestamp}` : 'provider time unavailable'} · refreshed every ${Math.max(30, Number(data.refreshSeconds) || 60)}s`
+    : 'Provider FX quote unavailable');
+  updateCurrencyConversion();
+  setText('chartSymbol', data.chartSymbol || selectedExchange);
   setText('chartLastPrice', primary ? formatCurrency(primary.price) : '—');
   setText('marketState', primary?.marketOpen === true ? 'OPEN' : primary?.marketOpen === false ? 'CLOSED' : 'UNKNOWN');
 
@@ -767,7 +840,7 @@ function setMarketData(data) {
       : isConnected
         ? partialErrors
           ? `Some market-data requests failed: ${partialErrors}`
-          : 'NSE quote data is being served by Twelve Data. Confirm your subscription includes real-time NSE access before relying on quote latency.'
+          : `${selectedExchange} quote data is being served by Twelve Data. Confirm your subscription includes real-time ${selectedExchange} access before relying on quote latency.`
         : [data.error, partialErrors].filter(Boolean).join(' · ')
           || 'Market data providers are currently unavailable.';
   }
@@ -775,13 +848,13 @@ function setMarketData(data) {
   populateWatchlist(quotes);
   renderTopGainers(quotes);
   renderChart(data.chart || []);
-  renderStrategies(data.chart || [], data.chartSymbol || 'NSE');
+  renderStrategies(data.chart || [], data.chartSymbol || selectedExchange);
 
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(loadMarketData, Math.max(30, Number(data.refreshSeconds) || 60) * 1000);
 }
 
-async function loadMarketData(chartSymbol = selectedChartSymbol) {
+async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = selectedExchange) {
   const requestId = ++marketDataRequestId;
   const configuredApiBase = String(window.MARKET_API_BASE_URL || '').trim().replace(/\/+$/, '');
   if (window.location.protocol === 'file:' && !configuredApiBase) {
@@ -792,7 +865,7 @@ async function loadMarketData(chartSymbol = selectedChartSymbol) {
     populateWatchlist();
     renderTopGainers();
     renderChart([]);
-    renderStrategies([], 'NSE');
+    renderStrategies([], selectedExchange);
     return;
   }
 
@@ -802,6 +875,7 @@ async function loadMarketData(chartSymbol = selectedChartSymbol) {
       : '/api/market-data';
     const apiUrl = new URL(apiBase, window.location.origin);
     if (chartSymbol) apiUrl.searchParams.set('symbol', chartSymbol);
+    apiUrl.searchParams.set('exchange', exchange);
     const response = await fetch(apiUrl, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Market data service returned HTTP ${response.status}`);
@@ -821,12 +895,16 @@ async function loadMarketData(chartSymbol = selectedChartSymbol) {
     setText('primaryQuotePrice', '—');
     setText('primaryQuoteChange', '—');
     setText('exchangeRate', '—');
+    setText('exchangeRateMeta', 'Provider FX quote unavailable');
+    window.latestExchangeRate = null;
+    window.latestExchangeRateUpdatedAt = null;
+    updateCurrencyConversion();
     setText('marketState', 'UNKNOWN');
     setText('chartLastPrice', '—');
     populateWatchlist();
     renderTopGainers();
     renderChart([]);
-    renderStrategies([], 'NSE');
+    renderStrategies([], exchange);
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(loadMarketData, 60000);
   }

@@ -21,3 +21,5 @@ services:
         value: "1"
       - key: NSE_WATCHLIST
         value: RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
+      - key: BSE_WATCHLIST
+        value: RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK

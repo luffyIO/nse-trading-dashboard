@@ -8,9 +8,15 @@ process.env.ALPHA_VANTAGE_SYMBOL_MAP = JSON.stringify({
   TCS: { symbol: 'TCS.NSE', exchange: 'NSE', currency: 'INR' },
   HDFCBANK: { symbol: 'HDFCBANK.NSE', exchange: 'NSE', currency: 'INR' },
   INFY: { symbol: 'INFY.NSE', exchange: 'NSE', currency: 'INR' },
-  ICICIBANK: { symbol: 'ICICIBANK.NSE', exchange: 'NSE', currency: 'INR' }
+  ICICIBANK: { symbol: 'ICICIBANK.NSE', exchange: 'NSE', currency: 'INR' },
+  'BSE:RELIANCE': { symbol: 'RELIANCE.BSE', exchange: 'BSE', currency: 'INR' },
+  'BSE:TCS': { symbol: 'TCS.BSE', exchange: 'BSE', currency: 'INR' },
+  'BSE:HDFCBANK': { symbol: 'HDFCBANK.BSE', exchange: 'BSE', currency: 'INR' },
+  'BSE:INFY': { symbol: 'INFY.BSE', exchange: 'BSE', currency: 'INR' },
+  'BSE:ICICIBANK': { symbol: 'ICICIBANK.BSE', exchange: 'BSE', currency: 'INR' }
 });
 const {
+  app,
   buildMarketData,
   buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
@@ -185,6 +191,140 @@ test('extracts free Yahoo Finance NSE quotes, intraday bars, and USD/INR without
   }
 });
 
+test('builds a separate BSE watchlist and uses BSE Yahoo symbols for quotes and charts', async () => {
+  const originalFetch = global.fetch;
+  const requestedSymbols = [];
+
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    const symbol = decodeURIComponent(url.pathname.split('/').pop());
+    requestedSymbols.push(symbol);
+    const isFx = symbol === 'USDINR=X';
+    return {
+      ok: true,
+      json: async () => ({
+        chart: {
+          result: [{
+            meta: {
+              currency: 'INR',
+              regularMarketPrice: isFx ? 88.4 : 2520,
+              previousClose: isFx ? 88.2 : 2500,
+              regularMarketTime: 1793959200,
+              symbol
+            },
+            timestamp: [1793958900, 1793959200],
+            indicators: { quote: [{ close: [2510, 2520] }] }
+          }],
+          error: null
+        }
+      })
+    };
+  };
+
+  try {
+    const data = await buildYahooMarketData('TCS', 'BSE');
+    assert.equal(data.exchange, 'BSE');
+    assert.equal(data.quotes.length, 5);
+    assert.equal(data.chartSymbol, 'TCS');
+    assert.equal(data.chart[1].close, 2520);
+    assert.equal(data.exchangeRate, 88.4);
+    assert.equal(data.exchangeRateSource, 'Yahoo Finance (unofficial)');
+    assert.equal(requestedSymbols.includes('RELIANCE.BO'), true);
+    assert.equal(requestedSymbols.includes('TCS.BO'), true);
+    assert.equal(requestedSymbols.includes('TCS.NS'), false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('requests BSE quotes and intraday bars from Twelve Data using the BSE exchange', async () => {
+  const originalFetch = global.fetch;
+  const requestedExchanges = [];
+
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    requestedExchanges.push(url.searchParams.get('exchange'));
+    if (url.pathname === '/quote') {
+      return {
+        ok: true,
+        json: async () => ({
+          close: '100',
+          currency: 'INR',
+          exchange: 'BSE',
+          percent_change: '0.5'
+        })
+      };
+    }
+    if (url.pathname === '/time_series') {
+      return {
+        ok: true,
+        json: async () => ({ values: [{ datetime: '2026-11-07 09:15:00', close: '100' }] })
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ rate: '88.4', timestamp: 1793959200 })
+    };
+  };
+
+  try {
+    const data = await buildTwelveDataMarketData('TCS', 'BSE');
+    assert.equal(data.exchange, 'BSE');
+    assert.equal(data.quotes.length, 5);
+    assert.equal(data.chartSymbol, 'TCS');
+    assert.equal(data.exchangeRate, 88.4);
+    assert.equal(data.exchangeRateSource, 'Twelve Data');
+    assert.equal(data.exchangeRateUpdatedAt, '2026-11-06T10:00:00.000Z');
+    assert.equal(requestedExchanges.filter((exchange) => exchange === 'BSE').length, 6);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('market-data API selects the requested exchange and rejects unknown exchanges and symbols', async () => {
+  const originalFetch = global.fetch;
+  const server = app.listen(0);
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    if (url.pathname === '/quote') {
+      return {
+        ok: true,
+        json: async () => ({
+          close: '100',
+          currency: 'INR',
+          exchange: url.searchParams.get('exchange'),
+          percent_change: '0.5'
+        })
+      };
+    }
+    if (url.pathname === '/time_series') {
+      return { ok: true, json: async () => ({ values: [{ datetime: '2026-11-07 09:15:00', close: '100' }] }) };
+    }
+    return { ok: true, json: async () => ({ rate: '88.4', timestamp: 1793959200 }) };
+  };
+
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const bseResponse = await originalFetch(`${baseUrl}/api/market-data?exchange=BSE&symbol=TCS`);
+    const bseData = await bseResponse.json();
+    assert.equal(bseResponse.status, 200);
+    assert.equal(bseData.exchange, 'BSE');
+    assert.equal(bseData.chartSymbol, 'TCS');
+
+    const invalidExchange = await originalFetch(`${baseUrl}/api/market-data?exchange=NYSE`);
+    assert.equal(invalidExchange.status, 400);
+    const invalidSymbol = await originalFetch(`${baseUrl}/api/market-data?exchange=BSE&symbol=NOT_CONFIGURED`);
+    assert.equal(invalidSymbol.status, 400);
+    const health = await originalFetch(`${baseUrl}/api/health`).then((response) => response.json());
+    assert.deepEqual(health.exchanges, ['NSE', 'BSE']);
+    assert.deepEqual(health.markets.BSE.symbols, ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK']);
+  } finally {
+    global.fetch = originalFetch;
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('builds Alpha Vantage watchlist quotes only for explicitly mapped symbols', async () => {
   const originalFetch = global.fetch;
   const alphaSymbols = [];
@@ -242,6 +382,61 @@ test('builds Alpha Vantage watchlist quotes only for explicitly mapped symbols',
   }
 });
 
+test('builds Alpha Vantage BSE quotes only from BSE-prefixed verified mappings', async () => {
+  const originalFetch = global.fetch;
+  const alphaSymbols = [];
+  const yahooSymbols = [];
+
+  global.fetch = async (input) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.alphavantage.co') {
+      const symbol = url.searchParams.get('symbol');
+      alphaSymbols.push(symbol);
+      return {
+        ok: true,
+        json: async () => ({
+          'Global Quote': {
+            '01. symbol': symbol,
+            '05. price': '223.45',
+            '09. change': '2.23',
+            '10. change percent': '1.00%',
+            '07. latest trading day': '2026-11-07'
+          }
+        })
+      };
+    }
+
+    const symbol = decodeURIComponent(url.pathname.split('/').pop());
+    yahooSymbols.push(symbol);
+    const isFx = symbol === 'USDINR=X';
+    return {
+      ok: true,
+      json: async () => ({
+        chart: {
+          result: [{
+            meta: { regularMarketPrice: isFx ? 88.25 : 223.45, regularMarketTime: 1793959200 },
+            timestamp: [1793959200],
+            indicators: { quote: [{ close: [223.45] }] }
+          }],
+          error: null
+        }
+      })
+    };
+  };
+
+  try {
+    const data = await buildAlphaVantageMarketData('RELIANCE', 'BSE');
+    assert.equal(data.exchange, 'BSE');
+    assert.equal(data.source, 'alpha-vantage');
+    assert.equal(data.quotes.length, 5);
+    assert.equal(alphaSymbols.includes('RELIANCE.BSE'), true);
+    assert.equal(yahooSymbols.includes('RELIANCE.BO'), true);
+    assert.equal(yahooSymbols.includes('RELIANCE.NS'), false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('rejects an Alpha Vantage response for a different provider symbol', async () => {
   const originalFetch = global.fetch;
   global.fetch = async () => ({
@@ -256,7 +451,7 @@ test('rejects an Alpha Vantage response for a different provider symbol', async 
   });
 
   try {
-    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete quote/);
+    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete .* quote/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -277,7 +472,7 @@ test('rejects incomplete Alpha Vantage change data instead of treating blanks as
   });
 
   try {
-    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete quote/);
+    await assert.rejects(fetchAlphaVantageQuote('RELIANCE'), /did not return a complete .* quote/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -317,6 +512,7 @@ test('keeps independently selected chart symbols isolated in the market-data cac
     assert.equal(infy.chart[0].close, 300);
     assert.deepEqual(chartSymbols.sort(), ['INFY', 'TCS']);
     await assert.rejects(getMarketData('OUTSIDE_WATCHLIST'), /not in the configured NSE watchlist/);
+    await assert.rejects(getMarketData('RELIANCE', 'SENSEX'), /exchange is not supported/);
   } finally {
     global.fetch = originalFetch;
   }

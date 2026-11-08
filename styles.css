@@ -231,6 +231,7 @@ h1 {
   .time-stamp {
     width: auto;
   }
+
 }
 
 .toolbar {
@@ -242,8 +243,8 @@ h1 {
 }
 
 .toolbar-label {
-  font-size: 0.57rem;
-  letter-spacing: 0.22em;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.5);
 }
@@ -312,8 +313,8 @@ h1 {
 
 .tiny-label {
   color: rgba(223, 232, 240, 0.72);
-  font-size: 0.58rem;
-  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   margin-bottom: 14px;
 }
@@ -517,8 +518,8 @@ h1 {
 }
 
 .panel-kicker {
-  font-size: 0.56rem;
-  letter-spacing: 0.2em;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.46);
 }
@@ -860,7 +861,7 @@ body {
 }
 
 .metrics-row {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.95fr);
   gap: 14px;
   padding: 22px 8px 0;
 }
@@ -870,14 +871,18 @@ body {
   min-width: 0;
   min-height: 132px;
   border-radius: 16px;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
 .regime-box:hover,
 .stat-box:hover,
 .panel:hover {
-  transform: translateY(-2px);
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+.primary-quote-card {
+  border-left: 3px solid var(--orange);
+  background: var(--panel-soft);
 }
 
 .stat-box .tiny-label {
@@ -924,8 +929,8 @@ body {
 
 .chart-quote span {
   color: var(--muted);
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -956,7 +961,7 @@ body {
 .chart-legend {
   top: 16px;
   right: 16px;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
 }
 
 #chartSvg {
@@ -1870,8 +1875,8 @@ html[data-theme="light"] tbody tr:hover {
   display: grid;
   gap: 5px;
   color: var(--muted);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -2111,6 +2116,10 @@ html[data-theme="light"] .assistant-form button {
 }
 
 @media (max-width: 760px) {
+  .primary-quote-card {
+    grid-column: 1 / -1;
+  }
+
   .chart-symbol-control {
     flex: 1 1 130px;
   }
@@ -2152,5 +2161,125 @@ html[data-theme="light"] .assistant-form button {
   .assistant-form button {
     min-width: 70px;
     padding: 0 12px;
+  }
+}
+
+.market-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.market-controls .chart-symbol-control select {
+  min-width: 260px;
+}
+
+.fx-stat-box {
+  align-items: stretch;
+  justify-content: center;
+}
+
+.fx-converter {
+  display: grid;
+  grid-template-columns: auto minmax(52px, 0.6fr) minmax(70px, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.fx-converter label,
+.fx-rate-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.fx-converter input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-converter output {
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fx-rate-meta {
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.fx-converter input:focus-visible,
+.market-controls select:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .eyebrow,
+  .tiny-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+  }
+
+  .fx-stat-box {
+    grid-column: 1 / -1;
+  }
+
+  .market-controls {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .market-controls .chart-symbol-control,
+  .market-controls .chart-symbol-control select {
+    width: 100%;
+  }
+
+  .market-controls .chart-symbol-control select {
+    min-width: 0;
+  }
+
+  .fx-converter {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 6px 10px;
+  }
+
+  .fx-converter label {
+    grid-column: 1;
+    font-size: 0.68rem;
+  }
+
+  .fx-converter input {
+    grid-column: 1;
+  }
+
+  .fx-converter output {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .fx-rate-meta {
+    font-size: 0.68rem;
+  }
+
+  .fx-converter output {
+    font-size: 0.8rem;
   }
 }
