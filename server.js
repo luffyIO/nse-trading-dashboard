@@ -3,12 +3,13 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const ALLOWED_ORIGINS = new Set(
-  (process.env.CORS_ALLOWED_ORIGINS || '')
+const ALLOWED_ORIGINS = new Set([
+  ...(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
-    .filter(Boolean)
-);
+    .filter(Boolean),
+  'https://localhost'
+]);
 const configuredPort = Number(process.env.PORT || 3000);
 const PORT = Number.isInteger(configuredPort) && configuredPort >= 0 && configuredPort <= 65535
   ? configuredPort
@@ -1035,6 +1036,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  ALLOWED_ORIGINS,
   buildMarketData,
   buildAlphaVantageMarketData,
   buildTwelveDataMarketData,

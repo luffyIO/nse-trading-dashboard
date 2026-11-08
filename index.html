@@ -11,10 +11,10 @@
       <div class="dashboard-shell">
         <header class="topbar">
           <div class="brand-wrap">
-            <div class="brand-mark">⚡</div>
+            <div class="brand-mark" aria-hidden="true">M</div>
             <div class="brand-copy">
               <span class="eyebrow">Indian equity markets · NSE &amp; BSE</span>
-              <h1>MARKET DASHBOARD</h1>
+              <h1>Market dashboard</h1>
             </div>
           </div>
 
@@ -47,13 +47,16 @@
                   <option value="BSE">BSE · Bombay Stock Exchange</option>
                 </select>
               </label>
-              <label class="chart-symbol-control market-provider-control" for="providerSelect">
-                <span>Data provider</span>
-                <select id="providerSelect" aria-label="Select a configured market-data provider">
-                  <option value="auto">Auto · default fallback</option>
-                </select>
-                <small class="provider-availability" id="providerAvailability">Provider options are loaded from the server.</small>
-              </label>
+              <details class="provider-settings">
+                <summary>Data source settings</summary>
+                <label class="chart-symbol-control market-provider-control" for="providerSelect">
+                  <span>Data provider</span>
+                  <select id="providerSelect" aria-label="Select a configured market-data provider">
+                    <option value="auto">Auto · default fallback</option>
+                  </select>
+                  <small class="provider-availability" id="providerAvailability">Provider options are loaded from the server.</small>
+                </label>
+              </details>
             </div>
             <div class="toolbar-note">Feed coverage and delay depend on your provider; the free fallback is unofficial.</div>
           </div>
@@ -144,21 +147,23 @@
             <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask a quote, or: add strategy Momentum EMA 8/21" required />
             <button class="assistant-send" type="submit">Send</button>
           </form>
-          <p class="assistant-intro">Strategy commands: <code>add strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, <code>update strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, and <code>backtest strategy &lt;name&gt;</code>.</p>
+          <details class="assistant-help">
+            <summary>Strategy commands</summary>
+            <p class="assistant-intro"><code>add strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, <code>update strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, and <code>backtest strategy &lt;name&gt;</code>.</p>
+          </details>
         </section>
 
-        <section class="strategy-section" aria-labelledby="strategyTitle">
-          <div class="strategy-heading">
+        <details class="strategy-section">
+          <summary class="strategy-heading">
             <div>
-              <span class="panel-kicker">Research workspace · Educational only</span>
+              <span class="panel-kicker">Optional · educational only</span>
               <h2 id="strategyTitle">Strategy lab</h2>
-              <p>Three concise strategy snapshots for the selected exchange symbol.</p>
+              <p>Paper-only strategy snapshots and backtests for the selected symbol.</p>
             </div>
             <div class="strategy-labels">
-              <span class="strategy-tag backtest-tag">Historical · backtest</span>
-              <span class="strategy-tag scenario-tag">Forward-looking · heuristic</span>
+              <span class="strategy-tag backtest-tag">View research</span>
             </div>
-          </div>
+          </summary>
 
           <article class="adaptive-agent" aria-labelledby="adaptiveAgentTitle">
             <div class="adaptive-agent-header">
@@ -294,14 +299,14 @@
               <strong>How to read these results:</strong> Backtests use only the currently available 5-minute close series for <span id="strategySymbol">the selected symbol</span>. Signals are evaluated on a completed bar and filled at the next available close; an illustrative 0.10% cost is applied on each entry and exit, with no slippage, taxes, liquidity, corporate actions, or market-impact model. The current feed provides limited intraday history, not a robust multi-year test. Few or zero trades mean the displayed metrics are not statistically meaningful. Simulations are hypothetical, may be affected by data gaps and overfitting, and do not guarantee future performance. No strategy can assure profits; this dashboard does not place trades or provide personalized financial advice.
             </div>
           </details>
-        </section>
+        </details>
 
         <div class="bottom-grid">
           <section class="panel">
             <div class="panel-header">
               <div>
                 <span class="panel-kicker">Watchlist</span>
-                <h3>Market movers</h3>
+                <h3>Your watchlist</h3>
               </div>
               <span class="panel-badge sample-badge" id="watchlistStatus">Waiting for feed</span>
             </div>
@@ -320,15 +325,12 @@
               </table>
             </div>
 
-            <div class="top-gainers">
-              <div class="top-gainers-heading">
-                <h4>Top gainers</h4>
-                <span>Configured watchlist</span>
-              </div>
+            <details class="top-gainers top-gainers-disclosure">
+              <summary>Top gainers in your watchlist</summary>
               <ol class="top-gainers-list" id="topGainersList" aria-live="polite">
                 <li class="top-gainers-empty">Waiting for verified quote data.</li>
               </ol>
-            </div>
+            </details>
           </section>
 
           <section class="panel narrative-panel">

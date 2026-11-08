@@ -29,3 +29,23 @@ test('builds the desktop app from the local service and enables renderer isolati
   assert.match(desktopMain, /127\.0\.0\.1/);
   assert.match(workflow, /release:[\s\S]*?uses: actions\/checkout@v4/);
 });
+
+test('defines an installable Capacitor Android build and release artifact', () => {
+  const capacitorConfig = require(path.join(projectRoot, 'capacitor.config.json'));
+  const workflow = fs.readFileSync(path.join(projectRoot, '.github', 'workflows', 'desktop.yml'), 'utf8');
+  const androidBuild = fs.readFileSync(path.join(projectRoot, 'android', 'app', 'build.gradle'), 'utf8');
+
+  assert.equal(packageJson.scripts['build:android'], 'node build-android.js');
+  assert.match(packageJson.devDependencies['@capacitor/android'], /^\^7\./);
+  assert.match(packageJson.devDependencies['@capacitor/core'], /^\^7\./);
+  assert.match(packageJson.devDependencies['@capacitor/cli'], /^\^7\./);
+  assert.equal(capacitorConfig.appId, packageJson.build.appId);
+  assert.equal(capacitorConfig.webDir, 'dist');
+  assert.equal(capacitorConfig.server.androidScheme, 'https');
+  assert.match(androidBuild, /versionName dashboardVersion/);
+  assert.match(androidBuild, /versionCode versionParts/);
+  assert.equal(fs.existsSync(path.join(projectRoot, 'android', 'gradlew')), true);
+  assert.equal(fs.existsSync(path.join(projectRoot, 'android', 'app', 'src', 'main', 'AndroidManifest.xml')), true);
+  assert.match(workflow, /platform: android[\s\S]*?command: build:android[\s\S]*?app-debug\.apk/);
+  assert.match(workflow, /MARKET_API_BASE_URL: \$\{\{ vars\.MARKET_API_BASE_URL \}\}/);
+});

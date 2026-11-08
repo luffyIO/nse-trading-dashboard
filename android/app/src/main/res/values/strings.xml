@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NSE Trading Dashboard</string>
+    <string name="title_activity_main">NSE Trading Dashboard</string>
+    <string name="package_name">com.luffyio.nsetradingdashboard</string>
+    <string name="custom_url_scheme">com.luffyio.nsetradingdashboard</string>
+</resources>

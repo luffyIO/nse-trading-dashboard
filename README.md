@@ -11,6 +11,7 @@ Responsive NSE and BSE dashboard with selectable market-data providers, a privat
 - **USD/INR reference and converter:** Displays the configured provider's FX quote timestamp when available and calculates an indicative conversion locally. It is not a guaranteed live or executable exchange rate.
 - **Selectable market data providers:** Choose auto, a configured built-in source, or a server-configured custom provider. Provider credentials stay on the API server. Timestamps, exchange access, and real-time availability depend on the provider and account; no real-time guarantee is made.
 - **Saved themes and conversations:** Dark/light theme and chat history persist on the device.
+- **Simplified dashboard:** Exchange selection and key market data stay prominent; provider settings, top gainers, and the optional strategy lab are available when needed.
 - **Responsive accessible UI:** Keyboard-operable controls and layouts for desktop and mobile.
 - **No fabricated prices:** Provider failures are shown as unavailable rather than replaced with synthetic quotes.
 - **Paper-only research:** Strategy lab and adaptive paper agent do not submit orders or connect to a broker.
@@ -52,7 +53,18 @@ Installers are written to `release/`:
 - macOS: universal `.dmg` for Apple Silicon and Intel Macs.
 - Linux: x64 `.AppImage` and Debian `.deb` packages.
 
-The cross-platform GitHub Actions workflow builds each installer on its native runner. Run it manually to download workflow artifacts, or push a `v*` tag to publish a GitHub Release. These builds are currently unsigned: Windows may show SmartScreen warnings, and macOS may require the user to approve an app from an unidentified developer. Signing/notarization credentials are not included. The desktop app is a client for the market-data sources, not a broker or trade execution program.
+### Android app
+
+The Android wrapper packages the dashboard locally and connects to the configured HTTPS market-data API. It requires internet access; the APK does not contain a market-data server or provider credentials. To build locally, install JDK 21 or later and the Android SDK, configure `ANDROID_HOME` or `ANDROID_SDK_ROOT`, and set `MARKET_API_BASE_URL` to the deployed HTTPS API origin:
+
+```powershell
+$env:MARKET_API_BASE_URL = "https://your-market-api.example.com"
+npm run build:android
+```
+
+The installable debug-signed APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. The API allows Capacitor's `https://localhost` WebView origin and still requires browser dashboard origins to be listed in `CORS_ALLOWED_ORIGINS`. The APK is intended for direct installation/testing; it is not signed with a Play Store release key.
+
+The GitHub Actions workflow builds Windows, macOS, Linux, and Android installers. Set the repository Actions variable `MARKET_API_BASE_URL` to the deployed HTTPS API origin before running the workflow. Run it manually to download workflow artifacts, or push a `v*` tag to publish all successful installer artifacts in a GitHub Release. Desktop builds are unsigned: Windows may show SmartScreen warnings, and macOS may require approval for an app from an unidentified developer. Signing/notarization credentials are not included. The desktop and Android apps are clients for market-data sources, not brokers or trade-execution programs.
 
 The dashboard adds saved dark/light themes and sortable watchlist columns (symbol, price, daily change, and update time). Sorting changes only the display order and does not affect quote values or strategy calculations.
 
@@ -155,7 +167,7 @@ The public [Swarajbabu/STOCK_MARKET](https://github.com/Swarajbabu/STOCK_MARKET)
 GitHub Pages can host the static dashboard but cannot run its Node API. This repository includes a Render Blueprint (`render.yaml`) for the backend and a GitHub Actions workflow for building and deploying the static site.
 
 1. Push this project to a GitHub repository you control. Connect that repository to Render and deploy the Blueprint. The Render service URL can host both the dashboard and API directly; GitHub Pages is optional if you want a separate frontend domain. The free Render service may sleep when idle and take time to wake.
-2. In Render's service environment, set `CORS_ALLOWED_ORIGINS` to the exact Pages origin, for example `https://OWNER.github.io` (no path or trailing slash). Leave provider keys unset for best-effort Yahoo data; if used, add keys and the Alpha Vantage symbol map only to Render's secret environment, never to GitHub Pages.
+2. In Render's service environment, set `CORS_ALLOWED_ORIGINS` to the exact Pages origin, for example `https://OWNER.github.io` (no path or trailing slash). The API separately allows the bundled Android app's `https://localhost` origin. Leave provider keys unset for best-effort Yahoo data; if used, add keys and the Alpha Vantage symbol map only to Render's secret environment, never to GitHub Pages.
 3. Wait for the Render service to deploy. Confirm `https://YOUR-API.onrender.com/api/health` responds, then set the GitHub repository variable `MARKET_API_BASE_URL` to `https://YOUR-API.onrender.com`.
 4. In the repository's Pages settings, choose GitHub Actions as the build/deploy source. Push to `main` or run the “Deploy dashboard to GitHub Pages” workflow manually.
 

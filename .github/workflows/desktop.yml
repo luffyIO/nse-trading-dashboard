@@ -1,4 +1,4 @@
-name: Build desktop installers
+name: Build cross-platform installers
 
 on:
   push:
@@ -30,10 +30,20 @@ jobs:
             files: |
               release/*.AppImage
               release/*.deb
+          - platform: android
+            runner: ubuntu-latest
+            command: build:android
+            files: android/app/build/outputs/apk/debug/app-debug.apk
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Set up Java
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -45,6 +55,8 @@ jobs:
         run: npm test
       - name: Build installer
         run: npm run ${{ matrix.command }}
+        env:
+          MARKET_API_BASE_URL: ${{ vars.MARKET_API_BASE_URL }}
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:

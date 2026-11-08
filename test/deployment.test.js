@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { buildPages } = require('../build-pages');
-const { createCorsMiddleware, createRateLimiter } = require('../server');
+const { ALLOWED_ORIGINS, createCorsMiddleware, createRateLimiter } = require('../server');
 
-function runCorsMiddleware(origin, method = 'GET') {
+function runCorsMiddleware(origin, method = 'GET', allowedOrigins = new Set(['https://example.github.io'])) {
   const headers = {};
   const response = {
     statusCode: null,
@@ -24,7 +24,7 @@ function runCorsMiddleware(origin, method = 'GET') {
     }
   };
   let nextCalled = false;
-  const middleware = createCorsMiddleware(new Set(['https://example.github.io']));
+  const middleware = createCorsMiddleware(allowedOrigins);
   middleware(
     { method, get: (name) => name === 'Origin' ? origin : undefined },
     response,
@@ -33,7 +33,7 @@ function runCorsMiddleware(origin, method = 'GET') {
   return { headers, response, nextCalled };
 }
 
-test('allows only the configured Pages origin and answers its preflight', () => {
+test('allows the configured Pages origin and bundled Android origin, and answers their preflight', () => {
   const allowed = runCorsMiddleware('https://example.github.io');
   assert.equal(allowed.headers['Access-Control-Allow-Origin'], 'https://example.github.io');
   assert.equal(allowed.nextCalled, true);
@@ -48,6 +48,9 @@ test('allows only the configured Pages origin and answers its preflight', () => 
 
   const deniedPreflight = runCorsMiddleware('https://other.example', 'OPTIONS');
   assert.equal(deniedPreflight.response.statusCode, 403);
+
+  const androidApp = runCorsMiddleware('https://localhost', 'GET', ALLOWED_ORIGINS);
+  assert.equal(androidApp.headers['Access-Control-Allow-Origin'], 'https://localhost');
 });
 
 test('builds a Pages artifact with an HTTPS backend URL and no server source', () => {
