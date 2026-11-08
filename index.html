@@ -47,13 +47,20 @@
                   <option value="BSE">BSE · Bombay Stock Exchange</option>
                 </select>
               </label>
+              <label class="chart-symbol-control market-provider-control" for="providerSelect">
+                <span>Data provider</span>
+                <select id="providerSelect" aria-label="Select a configured market-data provider">
+                  <option value="auto">Auto · default fallback</option>
+                </select>
+                <small class="provider-availability" id="providerAvailability">Provider options are loaded from the server.</small>
+              </label>
             </div>
             <div class="toolbar-note">Feed coverage and delay depend on your provider; the free fallback is unofficial.</div>
           </div>
           <div class="market-controls">
             <div class="session-meta">
               <span class="session-dot"></span>
-              <span>Last updated <strong id="updatedAt">—</strong></span>
+              <span>Fetched <strong id="updatedAt">—</strong></span>
             </div>
           </div>
         </section>
@@ -62,6 +69,7 @@
           <article class="stat-box primary-quote-card">
             <div class="tiny-label" id="primaryQuoteSymbol">RELIANCE · NSE</div>
             <div class="stat-value" id="primaryQuotePrice">—</div>
+            <div class="quote-meta" id="primaryQuoteTimestamp">Provider timestamp unavailable</div>
           </article>
 
           <article class="stat-box">
@@ -114,6 +122,31 @@
           <svg id="chartSvg" viewBox="0 0 1020 420" role="img" aria-label="Trading chart"></svg>
         </div>
 
+        <section class="panel market-assistant" aria-labelledby="marketAssistantTitle">
+          <div class="panel-header">
+            <div>
+              <span class="panel-kicker">Private · on this device</span>
+              <h3 id="marketAssistantTitle">Market assistant</h3>
+            </div>
+            <button class="assistant-clear" id="assistantClear" type="button">Clear chat</button>
+          </div>
+          <p class="assistant-intro">Ask about loaded market data or create and test paper-only EMA strategies. Results use available intraday history; they are simulations, not trade recommendations.</p>
+          <div class="assistant-prompts" aria-label="Suggested requests">
+            <button type="button" class="assistant-prompt" data-prompt="Show the top gainers">Top gainers</button>
+            <button type="button" class="assistant-prompt" data-prompt="Summarize the watchlist">Watchlist summary</button>
+            <button type="button" class="assistant-prompt" data-prompt="Add strategy Momentum EMA 8/21">Add EMA 8/21 strategy</button>
+            <button type="button" class="assistant-prompt" data-prompt="List strategies">List strategies</button>
+          </div>
+          <ol class="assistant-messages" id="assistantMessages" aria-live="polite" aria-relevant="additions"></ol>
+          <p class="assistant-storage-status" id="assistantStorageStatus" role="status"></p>
+          <form class="assistant-form" id="assistantForm">
+            <label class="visually-hidden" for="assistantInput">Ask the market assistant</label>
+            <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask a quote, or: add strategy Momentum EMA 8/21" required />
+            <button class="assistant-send" type="submit">Send</button>
+          </form>
+          <p class="assistant-intro">Strategy commands: <code>add strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, <code>update strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, and <code>backtest strategy &lt;name&gt;</code>.</p>
+        </section>
+
         <section class="strategy-section" aria-labelledby="strategyTitle">
           <div class="strategy-heading">
             <div>
@@ -162,6 +195,7 @@
             </details>
           </article>
 
+          <div class="custom-strategies" id="customStrategies" aria-live="polite"></div>
           <div class="strategy-grid">
             <article class="strategy-card backtest-card" aria-labelledby="emaStrategyTitle">
               <div class="strategy-card-heading">
@@ -306,7 +340,7 @@
             </div>
 
             <div class="signal-box">
-              <div class="signal-label">Configured provider · fallback varies</div>
+              <div class="signal-label">Selected provider · upstream freshness varies</div>
               <p id="feedMessage">
                   Connecting to the selected exchange, chart, and USD/INR data sources.
               </p>
@@ -318,28 +352,6 @@
           </section>
         </div>
 
-        <section class="panel market-assistant" aria-labelledby="marketAssistantTitle">
-          <div class="panel-header">
-            <div>
-              <span class="panel-kicker">Private · on this device</span>
-              <h3 id="marketAssistantTitle">Market assistant</h3>
-            </div>
-            <button class="assistant-clear" id="assistantClear" type="button">Clear chat</button>
-          </div>
-          <p class="assistant-intro">Ask about current watchlist quotes, top gainers, or the selected chart. Answers use the loaded feed, stay on this device, and are not investment recommendations.</p>
-          <div class="assistant-prompts" aria-label="Suggested questions">
-            <button type="button" class="assistant-prompt" data-prompt="Show the top gainers">Top gainers</button>
-            <button type="button" class="assistant-prompt" data-prompt="Summarize the watchlist">Watchlist summary</button>
-            <button type="button" class="assistant-prompt" data-prompt="What is on the intraday chart?">Chart status</button>
-          </div>
-          <ol class="assistant-messages" id="assistantMessages" aria-live="polite" aria-relevant="additions"></ol>
-          <p class="assistant-storage-status" id="assistantStorageStatus" role="status"></p>
-          <form class="assistant-form" id="assistantForm">
-            <label class="visually-hidden" for="assistantInput">Ask the market assistant</label>
-            <input id="assistantInput" name="question" type="text" maxlength="500" autocomplete="off" placeholder="Ask about your selected market watchlist…" required />
-            <button class="assistant-send" type="submit">Send</button>
-          </form>
-        </section>
       </div>
     </div>
 

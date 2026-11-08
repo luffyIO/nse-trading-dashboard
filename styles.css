@@ -905,6 +905,13 @@ body {
   text-overflow: ellipsis;
 }
 
+.quote-meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
 .chart-header {
   justify-content: flex-start;
   margin-top: 34px;
@@ -2185,6 +2192,23 @@ html[data-theme="light"] .assistant-form button {
   min-width: 260px;
 }
 
+.market-provider-control select {
+  width: min(300px, calc(100vw - 48px));
+}
+
+.provider-availability {
+  max-width: 300px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.market-provider-control select:disabled {
+  opacity: 0.65;
+}
+
 .fx-stat-box {
   align-items: stretch;
   justify-content: center;
@@ -2254,6 +2278,16 @@ html[data-theme="light"] .assistant-form button {
     min-width: min(260px, calc(100vw - 48px));
   }
 
+  .market-heading-line {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .market-provider-control,
+  .market-provider-control select {
+    width: 100%;
+  }
+
   .fx-converter {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
     gap: 6px 10px;
@@ -2280,4 +2314,52 @@ html[data-theme="light"] .assistant-form button {
   .fx-converter output {
     font-size: 0.8rem;
   }
+}
+
+.custom-strategies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.custom-strategy-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-soft);
+}
+
+.custom-strategy-card h3 {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.custom-strategy-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.custom-strategy-results div {
+  display: grid;
+  gap: 4px;
+}
+
+.custom-strategy-results span,
+.custom-strategy-period {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.custom-strategy-results strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.assistant-intro code {
+  color: var(--text);
+  font-size: 0.92em;
 }

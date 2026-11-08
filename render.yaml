@@ -15,6 +15,10 @@ services:
         sync: false
       - key: ALPHA_VANTAGE_SYMBOL_MAP
         sync: false
+      - key: CUSTOM_MARKET_DATA_PROVIDERS
+        sync: false
+      - key: CUSTOM_MARKET_DATA_API_KEY
+        sync: false
       - key: MARKET_DATA_REFRESH_SECONDS
         value: "60"
       - key: TRUST_PROXY_HOPS

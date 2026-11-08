@@ -1,15 +1,15 @@
 # Indian Market Dashboard
 
-Responsive NSE and BSE dashboard with a private, persistent market chat, exchange-specific watchlists, selectable intraday charts, an indicative USD/INR converter, dark/light themes, and an educational paper-strategy lab. It can use Twelve Data, carefully mapped Alpha Vantage quotes, or Yahoo Finance's public chart endpoint as a free, unofficial fallback. It is read-only and does not place trades or connect to a brokerage account.
+Responsive NSE and BSE dashboard with selectable market-data providers, a private market chat that can create and backtest EMA strategies, exchange-specific watchlists, selectable intraday charts, an indicative USD/INR converter, dark/light themes, and an educational paper-strategy lab. It supports Twelve Data, mapped Alpha Vantage quotes, Yahoo Finance's unofficial fallback, and server-configured custom REST providers. It is read-only and does not place trades or connect to a brokerage account.
 
 ## Features
 
-- **Market assistant:** Local, chat-style summaries of loaded quotes, watchlist gainers, and the selected chart. History is kept in this browser's local storage; messages are not sent to an AI service.
+- **Market assistant:** Local, chat-style summaries plus commands to add, update, list, and backtest paper-only EMA strategies. Results are computed from the currently available historical chart bars and saved in this browser; messages are not sent to an AI service.
 - **Watchlist gainers:** Highlights positive daily performers within the configured watchlist (not the whole NSE).
 - **NSE and BSE watchlists:** Switch exchanges; quote and chart symbols are requested for the selected exchange.
 - **Selectable intraday chart:** Switch the existing custom SVG 5-minute chart between configured symbols for the selected exchange.
 - **USD/INR reference and converter:** Displays the configured provider's FX quote timestamp when available and calculates an indicative conversion locally. It is not a guaranteed live or executable exchange rate.
-- **Market data providers:** Optional Twelve Data and Alpha Vantage quote support with Yahoo Finance fallback. Data availability and delay depend on provider and account entitlements; no real-time guarantee is made.
+- **Selectable market data providers:** Choose auto, a configured built-in source, or a server-configured custom provider. Provider credentials stay on the API server. Timestamps, exchange access, and real-time availability depend on the provider and account; no real-time guarantee is made.
 - **Saved themes and conversations:** Dark/light theme and chat history persist on the device.
 - **Responsive accessible UI:** Keyboard-operable controls and layouts for desktop and mobile.
 - **No fabricated prices:** Provider failures are shown as unavailable rather than replaced with synthetic quotes.
@@ -64,6 +64,8 @@ Example `.env`:
 TWELVE_DATA_API_KEY=your_api_key
 ALPHA_VANTAGE_API_KEY=
 ALPHA_VANTAGE_SYMBOL_MAP=
+CUSTOM_MARKET_DATA_PROVIDERS=
+CUSTOM_MARKET_DATA_API_KEY=
 NSE_WATCHLIST=RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
 BSE_WATCHLIST=RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK
 MARKET_DATA_REFRESH_SECONDS=60
@@ -71,6 +73,60 @@ PORT=3000
 ```
 
 `NSE_WATCHLIST` and `BSE_WATCHLIST` each accept up to six comma-separated symbols listed on that exchange. The chart defaults to the first symbol in the selected market; change the exchange and chart symbol in the dashboard. Confirm every symbol is available through the selected provider and exchange. `MARKET_DATA_REFRESH_SECONDS` controls the API cache and browser polling; the minimum is 30 seconds. The configured FX quote is refreshed at this interval when the provider responds, but the upstream timestamp, latency, market hours, and entitlement are provider-dependent. No source is guaranteed to deliver a real-time or executable USD/INR rate.
+
+### Provider selection and custom APIs
+
+The **Data provider** menu lists built-in providers and custom providers configured on the API server. **Auto** keeps the existing configured-source fallback order. Choosing a specific provider disables fallback for that request, so provider errors are visible instead of silently switching feeds.
+
+There is no universal stock-market API schema. To add a REST provider, configure its HTTPS base URL, endpoint paths, response-field mappings, and authentication on the server in `CUSTOM_MARKET_DATA_PROVIDERS`; set credentials in the environment variable named by `apiKeyEnv`. The dashboard only receives the provider's display name and availability, never its credentials. This intentionally avoids entering API secrets into a public webpage. Custom endpoint paths must remain on the configured host; redirects are rejected. Only use a provider and symbols your account is entitled to access.
+
+Example profile (replace the base URL and JSON field paths with those documented by your provider):
+
+```json
+[
+  {
+    "id": "broker-feed",
+    "name": "Broker Market API",
+    "baseUrl": "https://api.example.com/v1/",
+    "apiKeyEnv": "CUSTOM_MARKET_DATA_API_KEY",
+    "auth": { "type": "bearer" },
+    "quote": {
+      "path": "/quotes",
+      "symbolParam": "symbol",
+      "exchangeParam": "exchange",
+      "fields": {
+        "price": "data.price",
+        "change": "data.change",
+        "percentChange": "data.changePercent",
+        "currency": "data.currency",
+        "exchange": "data.exchange",
+        "timestamp": "data.timestamp",
+        "marketOpen": "data.marketOpen"
+      }
+    },
+    "chart": {
+      "path": "/candles",
+      "symbolParam": "symbol",
+      "exchangeParam": "exchange",
+      "intervalParam": "interval",
+      "interval": "5min",
+      "pointsPath": "data.candles",
+      "timeField": "time",
+      "closeField": "close"
+    },
+    "fx": {
+      "path": "/fx",
+      "symbolParam": "pair",
+      "symbol": "USD/INR",
+      "fields": { "rate": "data.rate", "timestamp": "data.timestamp" }
+    }
+  }
+]
+```
+
+Set that JSON as `CUSTOM_MARKET_DATA_PROVIDERS` and set `CUSTOM_MARKET_DATA_API_KEY` on the same server. Quote field mappings must confirm INR and the exchange (through response fields, a requested exchange parameter, or a fixed exchange setting). `auth.type` can be `bearer`, `header` (with a header `name`), `query` (with a query `name`), or `none`. `quote` is required; `chart` and `fx` are optional. Mapped JSON paths use dot notation. If chart history or a timestamp is unavailable, the dashboard shows it as unavailable rather than generating data. After configuration, select the provider from the dashboard menu. The generic adapter covers REST APIs that can be mapped to this contract; provider-specific OAuth, signed requests, WebSockets, and non-JSON protocols need a dedicated server adapter.
+
+Polling is not proof of real-time delivery. The dashboard identifies the provider timestamp when supplied, shows the fetch time separately, and does not claim that any provider is live or exchange-authorized. Availability, latency, licensing, symbol coverage, and market-data rights remain the provider/account holder's responsibility.
 
 When Alpha Vantage is used, quote snapshots are cached for six hours to limit requests. Alpha Vantage does not identify exchange/currency in its quote response, so every configured symbol needs an operator-verified mapping to its actual provider ticker, exchange, and INR denomination. An unprefixed key maps NSE by default; prefix keys with `BSE:` when the same ticker needs a separate BSE mapping, for example `{"RELIANCE":{"symbol":"<verified NSE ticker>","exchange":"NSE","currency":"INR"},"BSE:RELIANCE":{"symbol":"<verified BSE ticker>","exchange":"BSE","currency":"INR"}}`. Do not infer exchange coverage from a matching ticker name. Alpha Vantage does not supply the dashboard chart or FX quote in this setup.
 
@@ -83,10 +139,12 @@ If configured providers and Yahoo are unavailable, the dashboard shows a clear u
 - Free fallback: Yahoo Finance's public chart endpoint (`.NS` NSE, `.BO` BSE, and `USDINR=X`). It is unofficial and has no real-time guarantee or availability SLA.
 - Optional primary source: Twelve Data for exchange-specific quotes and five-minute bars and a USD/INR reference rate; account permissions, rate limits, and exchange entitlements may apply separately to NSE and BSE.
 - Optional mapped quote source: Alpha Vantage's `GLOBAL_QUOTE` snapshots, only when every selected watchlist ticker has an operator-verified symbol mapping. Its response does not itself verify exchange or currency. Quote snapshots are cached for six hours; chart and FX data use the unofficial Yahoo Finance feed.
+- Custom REST providers can be registered using the generic JSON contract above. Credentials remain in server environment variables; a provider must supply and map valid INR prices and exchange data.
 - The displayed USD/INR value is an indicative data-provider quote, not an assured live bank, broker, remittance, or executable conversion rate. Its timestamp may be missing or stale, and refresh polling does not control upstream freshness.
 - Neither fallback feed provides authoritative exchange session state here, so session status remains unknown unless an entitled provider confirms it.
 - Dhan's official API documentation states that Data APIs have additional charges; do not assume broker API access means free live market data.
 - The dashboard is informational only, not a trading signal service, broker connection, or execution system.
+- Chat-created EMA strategies are stored locally and tested against the currently available 5-minute history. Results include estimated fill costs but are not forecasts; limited intraday history, gaps, slippage, taxes, and market impact can materially change outcomes.
 
 ## Comparable project review
 

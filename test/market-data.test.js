@@ -3,6 +3,55 @@ const assert = require('node:assert/strict');
 
 process.env.TWELVE_DATA_API_KEY = 'test-key';
 process.env.ALPHA_VANTAGE_API_KEY = 'alpha-test-key';
+process.env.CUSTOM_MARKET_DATA_API_KEY = 'custom-test-secret';
+process.env.CUSTOM_MARKET_DATA_PROVIDERS = JSON.stringify([{
+  id: 'fixture-provider',
+  name: 'Fixture Provider',
+  baseUrl: 'https://market.example.test/v1/',
+  apiKeyEnv: 'CUSTOM_MARKET_DATA_API_KEY',
+  auth: { type: 'bearer' },
+  quote: {
+    path: '/quotes',
+    symbolParam: 'ticker',
+    exchangeParam: 'exchange',
+    fields: {
+      price: 'quote.price',
+      change: 'quote.change',
+      percentChange: 'quote.changePercent',
+      currency: 'quote.currency',
+      exchange: 'quote.exchange',
+      timestamp: 'quote.timestamp',
+      marketOpen: 'quote.marketOpen'
+    }
+  },
+  chart: {
+    path: '/candles',
+    symbolParam: 'ticker',
+    exchangeParam: 'exchange',
+    intervalParam: 'interval',
+    interval: '5min',
+    pointsPath: 'data.candles',
+    timeField: 'time',
+    closeField: 'close'
+  },
+  fx: {
+    path: '/fx',
+    symbolParam: 'pair',
+    symbol: 'USD/INR',
+    fields: { rate: 'result.rate', timestamp: 'result.timestamp' }
+  }
+}, {
+  id: 'fixture-bse-only',
+  name: 'BSE-only fixture',
+  baseUrl: 'https://bse.example.test/v1/',
+  auth: { type: 'none' },
+  quote: {
+    path: '/quotes',
+    currency: 'INR',
+    exchange: 'BSE',
+    fields: { price: 'quote.price' }
+  }
+}]);
 process.env.ALPHA_VANTAGE_SYMBOL_MAP = JSON.stringify({
   RELIANCE: { symbol: 'RELIANCE.NSE', exchange: 'NSE', currency: 'INR' },
   TCS: { symbol: 'TCS.NSE', exchange: 'NSE', currency: 'INR' },
@@ -21,7 +70,9 @@ const {
   buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
   buildYahooMarketData,
+  buildCustomProviderMarketData,
   fetchAlphaVantageQuote,
+  getProviderOptions,
   getMarketData
 } = require('../server');
 
@@ -281,11 +332,76 @@ test('requests BSE quotes and intraday bars from Twelve Data using the BSE excha
   }
 });
 
+test('builds quotes, chart bars, and FX from a server-configured generic provider without exposing its key', async () => {
+  const originalFetch = global.fetch;
+  const requests = [];
+  global.fetch = async (input, options) => {
+    const url = new URL(input);
+    requests.push({ url, authorization: options.headers.get('authorization') });
+    const body = url.pathname.endsWith('/quotes')
+      ? {
+        quote: {
+          price: '125.50',
+          change: '1.50',
+          changePercent: '1.21',
+          currency: 'INR',
+          exchange: 'BSE',
+          timestamp: '2026-11-08T02:30:00Z',
+          marketOpen: true
+        }
+      }
+      : url.pathname.endsWith('/candles')
+        ? { data: { candles: [
+          { time: '2026-11-08T02:35:00Z', close: '126.00' },
+          { time: '2026-11-08T02:30:00Z', close: '125.50' }
+        ] } }
+        : { result: { rate: '88.40', timestamp: '2026-11-08T02:00:00Z' } };
+    return {
+      ok: true,
+      headers: { get: () => 'application/json; charset=utf-8' },
+      json: async () => body
+    };
+  };
+
+  try {
+    const data = await buildMarketData('TCS', 'BSE', 'custom:fixture-provider');
+    assert.equal(data.source, 'custom:fixture-provider');
+    assert.equal(data.provider, 'Fixture Provider');
+    assert.equal(data.quotes.length, 5);
+    assert.equal(data.quotes[1].symbol, 'TCS');
+    assert.equal(data.quotes[1].price, 125.5);
+    assert.equal(data.quotes[1].marketOpen, true);
+    assert.deepEqual(data.chart.map((point) => point.close), [125.5, 126]);
+    assert.equal(data.exchangeRate, 88.4);
+    assert.equal(data.exchangeRateSource, 'Fixture Provider');
+    assert.equal(requests.length, 7);
+    assert.equal(requests.every(({ url }) => url.hostname === 'market.example.test'), true);
+    assert.equal(requests.every(({ authorization }) => authorization === 'Bearer custom-test-secret'), true);
+    assert.equal(JSON.stringify(getProviderOptions('BSE')).includes('custom-test-secret'), false);
+    assert.equal(requests.every(({ url }) => url.searchParams.get('exchange') === 'BSE'
+      || url.searchParams.get('pair') === 'USD/INR'), true);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('market-data API selects the requested exchange and rejects unknown exchanges and symbols', async () => {
   const originalFetch = global.fetch;
   const server = app.listen(0);
   global.fetch = async (input) => {
     const url = new URL(input);
+    if (url.hostname === 'market.example.test') {
+      const body = url.pathname.endsWith('/quotes')
+        ? { quote: { price: '125.50', currency: 'INR', exchange: 'BSE', changePercent: '1.21' } }
+        : url.pathname.endsWith('/candles')
+          ? { data: { candles: [{ time: '2026-11-08T02:30:00Z', close: '125.50' }] } }
+          : { result: { rate: '88.40' } };
+      return {
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => body
+      };
+    }
     if (url.pathname === '/quote') {
       return {
         ok: true,
@@ -311,13 +427,24 @@ test('market-data API selects the requested exchange and rejects unknown exchang
     assert.equal(bseData.exchange, 'BSE');
     assert.equal(bseData.chartSymbol, 'TCS');
 
+    const customResponse = await originalFetch(`${baseUrl}/api/market-data?exchange=BSE&symbol=TCS&provider=custom%3Afixture-provider`);
+    const customData = await customResponse.json();
+    assert.equal(customResponse.status, 200);
+    assert.equal(customData.source, 'custom:fixture-provider');
+    assert.equal(customData.provider, 'Fixture Provider');
+
     const invalidExchange = await originalFetch(`${baseUrl}/api/market-data?exchange=NYSE`);
     assert.equal(invalidExchange.status, 400);
     const invalidSymbol = await originalFetch(`${baseUrl}/api/market-data?exchange=BSE&symbol=NOT_CONFIGURED`);
     assert.equal(invalidSymbol.status, 400);
-    const health = await originalFetch(`${baseUrl}/api/health`).then((response) => response.json());
+    const health = await originalFetch(`${baseUrl}/api/health?exchange=BSE`).then((response) => response.json());
     assert.deepEqual(health.exchanges, ['NSE', 'BSE']);
     assert.deepEqual(health.markets.BSE.symbols, ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK']);
+    assert.equal(health.providers.find((provider) => provider.id === 'custom:fixture-provider').available, true);
+    assert.equal(health.providers.find((provider) => provider.id === 'custom:fixture-bse-only').available, true);
+    assert.equal(JSON.stringify(health).includes('custom-test-secret'), false);
+    const nseHealth = await originalFetch(`${baseUrl}/api/health?exchange=NSE`).then((response) => response.json());
+    assert.equal(nseHealth.providers.find((provider) => provider.id === 'custom:fixture-bse-only').available, false);
   } finally {
     global.fetch = originalFetch;
     server.closeAllConnections();

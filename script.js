@@ -6,6 +6,7 @@ const chartLastPrice = document.getElementById('chartLastPrice');
 const themeToggle = document.getElementById('themeToggle');
 const chartSymbolSelect = document.getElementById('chartSymbolSelect');
 const exchangeSelect = document.getElementById('exchangeSelect');
+const providerSelect = document.getElementById('providerSelect');
 const usdAmount = document.getElementById('usdAmount');
 const assistantMessages = document.getElementById('assistantMessages');
 const assistantForm = document.getElementById('assistantForm');
@@ -24,18 +25,30 @@ const THEME_KEY = 'indian-market-dashboard-theme-v1';
 const CHAT_HISTORY_KEY = 'indian-market-dashboard-chat-v1';
 const CHART_SYMBOL_KEY = 'indian-market-dashboard-chart-symbol-v1';
 const EXCHANGE_KEY = 'indian-market-dashboard-exchange-v1';
+const PROVIDER_KEY = 'indian-market-dashboard-provider-v1';
+const CUSTOM_STRATEGIES_KEY = 'indian-market-dashboard-custom-strategies-v1';
+const MAX_CUSTOM_STRATEGIES = 8;
 const MAX_CHAT_MESSAGES = 100;
 let watchlistSortKey = null;
 let watchlistSortDirection = 1;
 let savedChatMessages = [];
 let selectedChartSymbol = '';
 let selectedExchange = 'NSE';
+let selectedProvider = 'auto';
 let marketDataRequestId = 0;
+let providerOptionsRequestId = 0;
+let customStrategies = [];
 try {
   const savedExchange = localStorage.getItem(EXCHANGE_KEY);
   if (savedExchange === 'NSE' || savedExchange === 'BSE') selectedExchange = savedExchange;
 } catch {
   selectedExchange = 'NSE';
+}
+try {
+  const savedProvider = localStorage.getItem(PROVIDER_KEY);
+  if (savedProvider) selectedProvider = savedProvider;
+} catch {
+  selectedProvider = 'auto';
 }
 
 function getSavedTheme() {
@@ -108,6 +121,18 @@ function formatCurrency(value) {
   return Number.isFinite(value) ? currencyFormatter.format(value) : '—';
 }
 
+function formatProviderTimestamp(value) {
+  if (!value) return 'Provider timestamp unavailable';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `Trading day ${value}`;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return `Provider time ${value} · date not supplied`;
+  return `Provider time ${new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)} IST`;
+}
+
 function renderTopGainers(quotes = []) {
   const list = document.getElementById('topGainersList');
   if (!list) return;
@@ -166,7 +191,7 @@ function renderAssistantHistory() {
   if (savedChatMessages.length === 0) {
     appendAssistantMessage(
       'assistant',
-      'Hi! I can summarize loaded market-watchlist quotes, list top gainers, and describe the intraday chart. I only use data currently shown on this dashboard.'
+      'Hi! I can summarize loaded quotes, list watchlist gainers, and describe the chart. You can also add or update an EMA strategy and backtest it on the available chart history. Results are paper-only and not investment advice.'
     );
     return;
   }
@@ -205,7 +230,181 @@ function getWatchlistGainers() {
     .sort((left, right) => right.percentChange - left.percentChange);
 }
 
+function getCustomStrategyResult(strategy, points = window.latestMarketChart || []) {
+  const validPoints = points.filter((point) => point
+    && Number.isFinite(point.close)
+    && point.close > 0
+    && point.time
+    && Number.isFinite(Date.parse(point.time)));
+  if (validPoints.length < strategy.slowPeriod + 2) {
+    return { status: 'insufficient-history', bars: validPoints.length, points: validPoints };
+  }
+  const result = window.StrategyEngine.backtestEmaParameters(
+    validPoints,
+    strategy.fastPeriod,
+    strategy.slowPeriod
+  );
+  return { status: 'backtested', ...result, points: validPoints };
+}
+
+function getStrategyPeriod(points) {
+  if (points.length === 0) return 'No dated chart bars';
+  const format = (point) => new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(point.time));
+  return `${format(points[0])}–${format(points[points.length - 1])} IST · ${points.length} available bars`;
+}
+
+function renderCustomStrategies() {
+  const container = document.getElementById('customStrategies');
+  if (!container) return;
+  container.replaceChildren();
+
+  customStrategies.forEach((strategy) => {
+    const result = getCustomStrategyResult(strategy);
+    const card = document.createElement('article');
+    card.className = 'strategy-card custom-strategy-card';
+    const header = document.createElement('div');
+    header.className = 'strategy-card-heading';
+    const tag = document.createElement('span');
+    tag.className = 'strategy-tag paper-tag';
+    tag.textContent = `Paper · EMA ${strategy.fastPeriod}/${strategy.slowPeriod}`;
+    const state = document.createElement('span');
+    state.className = 'strategy-state';
+    state.textContent = result.status === 'backtested' ? 'Historical simulation' : 'Insufficient history';
+    header.append(tag, state);
+
+    const title = document.createElement('h3');
+    title.textContent = strategy.name;
+    const metrics = document.createElement('div');
+    metrics.className = 'custom-strategy-results';
+    const entries = result.status === 'backtested'
+      ? [
+        ['Net return', formatPercent(result.netReturnPct)],
+        ['Closed trades', String(result.tradeCount)],
+        ['Max drawdown', `-${result.maxDrawdownPct.toFixed(2)}%`],
+        ['Win rate', result.winRatePct === null ? '—' : `${result.winRatePct.toFixed(1)}%`]
+      ]
+      : [['Available bars', `${result.bars} / ${strategy.slowPeriod + 2}`]];
+    entries.forEach(([label, value]) => {
+      const metric = document.createElement('div');
+      const metricLabel = document.createElement('span');
+      metricLabel.textContent = label;
+      const metricValue = document.createElement('strong');
+      metricValue.textContent = value;
+      metric.append(metricLabel, metricValue);
+      metrics.appendChild(metric);
+    });
+
+    const period = document.createElement('p');
+    period.className = 'custom-strategy-period';
+    period.textContent = result.status === 'backtested'
+      ? `Historical test · ${getStrategyPeriod(result.points)}. Uses 0.10% estimated cost per fill.`
+      : 'Waiting for enough valid historical chart bars; no result is fabricated.';
+    const runButton = document.createElement('button');
+    runButton.className = 'assistant-prompt custom-strategy-run';
+    runButton.type = 'button';
+    runButton.textContent = 'Run available-history backtest';
+    runButton.addEventListener('click', () => submitAssistantMessage(`backtest strategy ${strategy.name}`));
+    card.append(header, title, metrics, period, runButton);
+    container.appendChild(card);
+  });
+}
+
+function saveCustomStrategies() {
+  try {
+    localStorage.setItem(CUSTOM_STRATEGIES_KEY, JSON.stringify(customStrategies));
+    setAssistantStorageStatus('Custom EMA strategies are saved on this device only.');
+    return true;
+  } catch {
+    setAssistantStorageStatus('Browser storage is unavailable. The strategy change will not persist after this page closes.');
+    return false;
+  }
+}
+
+function loadCustomStrategies() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_STRATEGIES_KEY) || '[]');
+    if (!Array.isArray(saved)) throw new Error('Saved strategies must be a list.');
+    customStrategies = saved.filter((strategy) => strategy
+      && typeof strategy.name === 'string'
+      && /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(strategy.name)
+      && Number.isInteger(strategy.fastPeriod)
+      && Number.isInteger(strategy.slowPeriod)
+      && strategy.fastPeriod >= 2
+      && strategy.fastPeriod < strategy.slowPeriod
+      && strategy.slowPeriod <= 200).slice(0, MAX_CUSTOM_STRATEGIES);
+  } catch {
+    customStrategies = [];
+    setAssistantStorageStatus('Saved strategies could not be read. New strategies can still be added for this session.');
+  }
+  renderCustomStrategies();
+}
+
+function runCustomStrategyBacktest(strategy) {
+  const result = getCustomStrategyResult(strategy);
+  if (result.status !== 'backtested') {
+    return `${strategy.name}: not enough valid bars yet (${result.bars}/${strategy.slowPeriod + 2}). No results were estimated from missing data.`;
+  }
+  return `${strategy.name} · historical simulation on ${selectedChartSymbol || 'the selected symbol'} (${selectedExchange}): net ${formatPercent(result.netReturnPct)}, ${result.tradeCount} closed trades, max drawdown ${result.maxDrawdownPct.toFixed(2)}%, win rate ${result.winRatePct === null ? 'unavailable' : `${result.winRatePct.toFixed(1)}%`}. Period: ${getStrategyPeriod(result.points)}. Uses 0.10% estimated cost per fill; this limited close-only backtest is not a forecast or recommendation.`;
+}
+
+function handleStrategyCommand(question) {
+  const listCommand = /^(?:list|show)\s+(?:my\s+)?strategies$/i.test(question.trim());
+  if (listCommand) {
+    return customStrategies.length
+      ? `Saved paper strategies: ${customStrategies.map((strategy) => `${strategy.name} (EMA ${strategy.fastPeriod}/${strategy.slowPeriod})`).join('; ')}. Ask “backtest strategy <name>” to rerun one on the currently loaded chart history.`
+      : 'No custom strategies yet. Add one with “add strategy Momentum EMA 8/21”.';
+  }
+
+  const backtestMatch = /^(?:backtest|test|run)\s+strategy\s+(.+)$/i.exec(question.trim());
+  if (backtestMatch) {
+    const name = backtestMatch[1].trim().replace(/^["']|["']$/g, '');
+    const strategy = customStrategies.find((candidate) => candidate.name.toLowerCase() === name.toLowerCase());
+    return strategy
+      ? runCustomStrategyBacktest(strategy)
+      : `I couldn't find “${name}”. Ask “list strategies” to see saved strategy names.`;
+  }
+
+  const updateMatch = /^(add|create|update|change)\s+strategy\s+(.+?)\s+(?:to\s+)?ema\s+(\d{1,3})\s*(?:\/|and|,)\s*(\d{1,3})$/i.exec(question.trim());
+  if (!updateMatch) return null;
+
+  const [, action, rawName, fastText, slowText] = updateMatch;
+  const name = rawName.trim().replace(/^["']|["']$/g, '');
+  const fastPeriod = Number(fastText);
+  const slowPeriod = Number(slowText);
+  if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/.test(name)) {
+    return 'Use a strategy name of up to 40 letters, numbers, spaces, dots, underscores, or hyphens.';
+  }
+  if (fastPeriod < 2 || fastPeriod >= slowPeriod || slowPeriod > 200) {
+    return 'EMA periods must be whole numbers from 2 to 200, with the fast period smaller than the slow period (for example 8/21).';
+  }
+
+  const existingIndex = customStrategies.findIndex((strategy) => strategy.name.toLowerCase() === name.toLowerCase());
+  const isUpdate = action.toLowerCase() === 'update' || action.toLowerCase() === 'change';
+  if (isUpdate && existingIndex < 0) return `I couldn't find “${name}”. Use “list strategies” or add it first.`;
+  if (!isUpdate && existingIndex >= 0) return `“${name}” already exists. Use “update strategy ${name} EMA ${fastPeriod}/${slowPeriod}” to change it.`;
+  if (!isUpdate && customStrategies.length >= MAX_CUSTOM_STRATEGIES) {
+    return `You can save up to ${MAX_CUSTOM_STRATEGIES} custom strategies. Update an existing strategy instead.`;
+  }
+
+  const strategy = { name, fastPeriod, slowPeriod };
+  if (isUpdate) customStrategies[existingIndex] = strategy;
+  else customStrategies.push(strategy);
+  saveCustomStrategies();
+  renderCustomStrategies();
+  return `${isUpdate ? 'Updated' : 'Added'} paper-only strategy “${name}” (EMA ${fastPeriod}/${slowPeriod}). ${runCustomStrategyBacktest(strategy)}`;
+}
+
 function getAssistantReply(question) {
+  const strategyReply = handleStrategyCommand(question);
+  if (strategyReply) return strategyReply;
+
   const normalized = question.toLowerCase();
   const quotes = window.latestMarketQuotes || [];
   const tokens = new Set(question.toUpperCase().match(/[A-Z0-9&.-]+/g) || []);
@@ -265,6 +464,7 @@ function submitAssistantMessage(text) {
 }
 
 loadAssistantHistory();
+loadCustomStrategies();
 assistantForm?.addEventListener('submit', (event) => {
   event.preventDefault();
   if (!assistantInput) return;
@@ -328,6 +528,65 @@ try {
 }
 
 if (exchangeSelect) exchangeSelect.value = selectedExchange;
+if (providerSelect) providerSelect.value = selectedProvider;
+
+function getApiBaseUrl() {
+  return String(window.MARKET_API_BASE_URL || '').trim().replace(/\/+$/, '');
+}
+
+async function refreshProviderOptions(exchange) {
+  const requestId = ++providerOptionsRequestId;
+  const configuredApiBase = getApiBaseUrl();
+  if (window.location.protocol === 'file:' && !configuredApiBase) return;
+
+  const apiUrl = new URL(configuredApiBase
+    ? `${configuredApiBase}/api/health`
+    : '/api/health', window.location.origin);
+  apiUrl.searchParams.set('exchange', exchange);
+  try {
+    const response = await fetch(apiUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Provider list returned HTTP ${response.status}`);
+    const data = await response.json();
+    if (requestId !== providerOptionsRequestId || exchange !== selectedExchange || !providerSelect) return;
+    const providers = Array.isArray(data.providers) ? data.providers : [];
+    providerSelect.disabled = false;
+    providerSelect.replaceChildren();
+    let selectedAvailable = false;
+    providers.forEach((provider) => {
+      const option = document.createElement('option');
+      option.value = provider.id;
+      option.textContent = `${provider.name}${provider.available ? '' : ' · not configured'}`;
+      option.disabled = !provider.available;
+      if (provider.id === selectedProvider && provider.available) selectedAvailable = true;
+      providerSelect.appendChild(option);
+    });
+    if (!selectedAvailable) selectedProvider = 'auto';
+    providerSelect.value = selectedProvider;
+    if (!selectedAvailable) {
+      try {
+        localStorage.setItem(PROVIDER_KEY, selectedProvider);
+      } catch {
+        setAssistantStorageStatus('Provider preference cannot be saved in this browser.');
+      }
+    }
+    setText('providerAvailability', 'Keys stay on the server; provider freshness depends on its feed.');
+  } catch (error) {
+    if (requestId !== providerOptionsRequestId) return;
+    if (providerSelect) providerSelect.disabled = true;
+    setText('providerAvailability', `Provider list unavailable: ${error.message}`);
+  }
+}
+
+providerSelect?.addEventListener('change', () => {
+  selectedProvider = providerSelect.value;
+  try {
+    localStorage.setItem(PROVIDER_KEY, selectedProvider);
+  } catch {
+    setAssistantStorageStatus('Provider preference cannot be saved in this browser.');
+  }
+  loadMarketData();
+});
+
 exchangeSelect?.addEventListener('change', () => {
   selectedExchange = exchangeSelect.value === 'BSE' ? 'BSE' : 'NSE';
   selectedChartSymbol = '';
@@ -336,7 +595,7 @@ exchangeSelect?.addEventListener('change', () => {
   } catch {
     setAssistantStorageStatus('Exchange preference cannot be saved in this browser.');
   }
-  loadMarketData('', selectedExchange);
+  refreshProviderOptions(selectedExchange).finally(() => loadMarketData('', selectedExchange));
 });
 
 function updateCurrencyConversion() {
@@ -634,6 +893,7 @@ function renderStrategies(points, symbol) {
   setText('scenarioCondition', scenario?.condition || 'Waiting for at least 21 valid closes to calculate indicators.');
   setText('scenarioInvalidation', scenario?.invalidation || 'No scenario is active.');
   renderAdaptiveAgent(points, symbol, selectedExchange);
+  renderCustomStrategies();
 }
 
 function mergeAgentHistory(symbol, freshPoints) {
@@ -760,25 +1020,26 @@ function setMarketData(data) {
   const isConnected = data.configured && quotes.length > 0;
   const isYahoo = data.source === 'yahoo-finance-unofficial';
   const isAlphaVantage = data.source === 'alpha-vantage';
-  const providerName = isYahoo
+  const isCustomProvider = typeof data.source === 'string' && data.source.startsWith('custom:');
+  const providerName = data.provider || (isYahoo
     ? 'Yahoo Finance · unofficial'
     : isAlphaVantage
       ? 'Alpha Vantage · delayed snapshot'
-      : 'Twelve Data';
+      : 'Configured provider');
   const badgeLabel = isConnected
-    ? isYahoo ? 'Yahoo · unofficial' : isAlphaVantage ? 'Alpha Vantage · snapshot' : `${selectedExchange} · provider feed`
+    ? isYahoo ? 'Yahoo · unofficial' : isAlphaVantage ? 'Alpha Vantage · snapshot' : providerName
     : 'Feed unavailable';
 
   setConnectionStatus(
     isConnected ? providerName : data.configured ? 'Provider error' : 'Data not configured',
-    isConnected ? isYahoo || isAlphaVantage ? 'delayed' : 'connected' : 'offline'
+    isConnected ? 'delayed' : 'offline'
   );
   setText('feedLabel', isConnected
     ? isYahoo
       ? 'Unofficial feed · latency unknown'
       : isAlphaVantage
         ? 'Snapshot · market/plan dependent'
-        : 'Quote feed connected'
+        : 'Provider selected · latency not verified'
     : 'Provider feed required');
   setText('watchlistStatus', badgeLabel);
   setText('marketContext', selectedExchange);
@@ -786,6 +1047,9 @@ function setMarketData(data) {
   setText('chartExchangeLabel', selectedExchange);
   setText('primaryQuoteSymbol', primary ? `${primary.symbol} · ${selectedExchange}` : `${data.chartSymbol || selectedExchange} · ${selectedExchange}`);
   setText('primaryQuotePrice', primary ? formatCurrency(primary.price) : '—');
+  setText('primaryQuoteTimestamp', primary
+    ? formatProviderTimestamp(primary.timestamp)
+    : 'Provider timestamp unavailable');
 
   const dayChange = primary && Number.isFinite(primary.percentChange)
     ? `${primary.percentChange > 0 ? '+' : ''}${primary.percentChange.toFixed(2)}%`
@@ -834,12 +1098,12 @@ function setMarketData(data) {
   const feedMessage = document.getElementById('feedMessage');
   if (feedMessage) {
     const partialErrors = (data.errors || []).join(' · ');
-    feedMessage.textContent = isConnected && (isYahoo || isAlphaVantage)
+    feedMessage.textContent = isConnected && (isYahoo || isAlphaVantage || isCustomProvider)
       ? `${data.disclaimer || 'Unofficial market data; real-time access is not guaranteed.'}${partialErrors ? ` Some requests failed: ${partialErrors}` : ''}`
       : isConnected
         ? partialErrors
           ? `Some market-data requests failed: ${partialErrors}`
-          : `${selectedExchange} quote data is being served by Twelve Data. Confirm your subscription includes real-time ${selectedExchange} access before relying on quote latency.`
+          : `${selectedExchange} quote data is being served by ${providerName}. Confirm your account includes the required exchange entitlement; real-time delivery is not verified by this dashboard.`
         : [data.error, partialErrors].filter(Boolean).join(' · ')
           || 'Market data providers are currently unavailable.';
   }
@@ -855,7 +1119,7 @@ function setMarketData(data) {
 
 async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = selectedExchange) {
   const requestId = ++marketDataRequestId;
-  const configuredApiBase = String(window.MARKET_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  const configuredApiBase = getApiBaseUrl();
   if (window.location.protocol === 'file:' && !configuredApiBase) {
     setConnectionStatus('Open dashboard through local server', 'offline');
     setText('feedLabel', 'Local server required');
@@ -875,6 +1139,7 @@ async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = sele
     const apiUrl = new URL(apiBase, window.location.origin);
     if (chartSymbol) apiUrl.searchParams.set('symbol', chartSymbol);
     apiUrl.searchParams.set('exchange', exchange);
+    apiUrl.searchParams.set('provider', selectedProvider);
     const response = await fetch(apiUrl, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Market data service returned HTTP ${response.status}`);
@@ -911,4 +1176,4 @@ async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = sele
 
 updateClock();
 setInterval(updateClock, 1000);
-loadMarketData();
+refreshProviderOptions(selectedExchange).finally(() => loadMarketData());

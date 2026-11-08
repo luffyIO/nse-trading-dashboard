@@ -22,12 +22,14 @@ const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const API_BASE_URL = 'https://api.twelvedata.com';
 const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 const YAHOO_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+const EXCHANGES = ['NSE', 'BSE'];
+const BUILT_IN_PROVIDERS = new Set(['auto', 'twelvedata', 'alpha-vantage', 'yahoo']);
+const CUSTOM_PROVIDERS = loadCustomProviders(process.env.CUSTOM_MARKET_DATA_PROVIDERS);
 const configuredRefreshSeconds = Number(process.env.MARKET_DATA_REFRESH_SECONDS || 60);
 const CONFIGURED_REFRESH_SECONDS = Number.isFinite(configuredRefreshSeconds)
   ? Math.min(3600, Math.max(30, Math.floor(configuredRefreshSeconds)))
   : 60;
 const ALPHA_VANTAGE_REFRESH_SECONDS = 6 * 60 * 60;
-const EXCHANGES = ['NSE', 'BSE'];
 const WATCHLISTS = Object.fromEntries(EXCHANGES.map((exchange) => {
   const configuredWatchlist = (process.env[`${exchange}_WATCHLIST`]
     || 'RELIANCE,TCS,HDFCBANK,INFY,ICICIBANK')
@@ -70,6 +72,115 @@ const marketDataCache = new Map();
 const refreshInProgress = new Map();
 const cachedAlphaVantageQuotes = new Map();
 const alphaVantageRefreshInProgress = new Map();
+
+function loadCustomProviders(rawConfig) {
+  if (!rawConfig) return [];
+  let providers;
+  try {
+    providers = JSON.parse(rawConfig);
+  } catch (error) {
+    throw new Error(`CUSTOM_MARKET_DATA_PROVIDERS must be valid JSON: ${error.message}`);
+  }
+  if (!Array.isArray(providers)) {
+    throw new Error('CUSTOM_MARKET_DATA_PROVIDERS must be a JSON array.');
+  }
+
+  const ids = new Set();
+  return providers.map((provider) => {
+    if (!provider
+      || typeof provider !== 'object'
+      || !/^[a-z0-9][a-z0-9-]{1,39}$/.test(provider.id || '')
+      || BUILT_IN_PROVIDERS.has(provider.id)
+      || ids.has(provider.id)
+      || typeof provider.name !== 'string'
+      || !provider.name.trim()
+      || provider.name.trim().length > 60
+      || typeof provider.baseUrl !== 'string'
+      || (provider.apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(provider.apiKeyEnv))) {
+      throw new Error('Each custom provider needs a unique id, display name, and HTTPS baseUrl.');
+    }
+
+    let baseUrl;
+    try {
+      baseUrl = new URL(provider.baseUrl);
+    } catch {
+      throw new Error(`Custom provider ${provider.id} has an invalid baseUrl.`);
+    }
+    if (baseUrl.protocol !== 'https:'
+      || baseUrl.username
+      || baseUrl.password
+      || baseUrl.search
+      || baseUrl.hash) {
+      throw new Error(`Custom provider ${provider.id} baseUrl must be HTTPS without credentials, query, or fragment.`);
+    }
+
+    if (!provider.quote
+      || !isProviderPath(provider.quote.path)
+      || !provider.quote.fields
+      || typeof provider.quote.fields.price !== 'string'
+      || (!provider.quote.fields.currency && provider.quote.currency !== 'INR')
+      || (!provider.quote.fields.exchange
+        && !provider.quote.exchangeParam
+        && !EXCHANGES.includes(provider.quote.exchange))
+      || (provider.quote.exchange && !EXCHANGES.includes(provider.quote.exchange))) {
+      throw new Error(`Custom provider ${provider.id} needs price, INR currency, and exchange mappings for quotes.`);
+    }
+    for (const endpoint of [provider.chart, provider.fx]) {
+      if (endpoint && !isProviderPath(endpoint.path)) {
+        throw new Error(`Custom provider ${provider.id} endpoint paths must be relative to its HTTPS baseUrl.`);
+      }
+    }
+    if (provider.chart
+      && (typeof provider.chart.pointsPath !== 'string'
+        || typeof provider.chart.timeField !== 'string'
+        || typeof provider.chart.closeField !== 'string')) {
+      throw new Error(`Custom provider ${provider.id} chart mapping needs pointsPath, timeField, and closeField.`);
+    }
+    if (provider.fx && (!provider.fx.fields || typeof provider.fx.fields.rate !== 'string')) {
+      throw new Error(`Custom provider ${provider.id} FX mapping needs a rate field.`);
+    }
+    const auth = provider.auth || { type: 'none' };
+    if (!['none', 'bearer', 'header', 'query'].includes(auth.type)
+      || (['header', 'query'].includes(auth.type)
+        && (typeof auth.name !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(auth.name)))) {
+      throw new Error(`Custom provider ${provider.id} has an unsupported authentication configuration.`);
+    }
+    if (auth.type !== 'none' && !provider.apiKeyEnv) {
+      throw new Error(`Custom provider ${provider.id} authentication needs an apiKeyEnv setting.`);
+    }
+
+    ids.add(provider.id);
+    return { ...provider, baseUrl: baseUrl.toString(), auth };
+  });
+}
+
+function isProviderPath(value) {
+  return typeof value === 'string'
+    && value.startsWith('/')
+    && !value.startsWith('//')
+    && !/[\\?#\r\n]/.test(value);
+}
+
+function getProviderOptions(exchange) {
+  return [
+    { id: 'auto', name: 'Auto · default fallback', available: true },
+    { id: 'twelvedata', name: 'Twelve Data', available: Boolean(API_KEY) },
+    {
+      id: 'alpha-vantage',
+      name: 'Alpha Vantage',
+      available: Boolean(ALPHA_VANTAGE_API_KEY && hasCompleteAlphaVantageMapping(exchange))
+    },
+    { id: 'yahoo', name: 'Yahoo Finance · unofficial', available: true },
+    ...CUSTOM_PROVIDERS.map((provider) => ({
+      id: `custom:${provider.id}`,
+      name: provider.name,
+      available: (provider.auth.type === 'none'
+        || !provider.apiKeyEnv
+        || Boolean(process.env[provider.apiKeyEnv]))
+        && (!provider.quote.exchange || provider.quote.exchange === exchange)
+    }))
+  ];
+}
 
 function getWatchlist(exchange) {
   return WATCHLISTS[exchange];
@@ -290,6 +401,171 @@ async function fetchQuote(symbol, exchange) {
       : quote.is_market_open === false || quote.is_market_open === 'false'
         ? false
         : null
+  };
+}
+
+function getMappedValue(payload, pathValue) {
+  if (typeof pathValue !== 'string' || pathValue.length === 0) return undefined;
+  return pathValue.split('.').reduce((value, key) => {
+    if (value === null
+      || typeof value !== 'object'
+      || ['__proto__', 'prototype', 'constructor'].includes(key)
+      || !Object.prototype.hasOwnProperty.call(value, key)) return undefined;
+    return value[key];
+  }, payload);
+}
+
+function isProviderAvailable(provider, exchange) {
+  return getProviderOptions(exchange).some((option) => option.id === `custom:${provider.id}` && option.available);
+}
+
+async function fetchCustomJson(provider, endpoint, params = {}) {
+  const baseUrl = provider.baseUrl.endsWith('/') ? provider.baseUrl : `${provider.baseUrl}/`;
+  const url = new URL(endpoint.path.replace(/^\/+/, ''), baseUrl);
+  if (url.origin !== new URL(provider.baseUrl).origin) {
+    throw new Error(`Custom provider ${provider.name} endpoint must stay on its configured host.`);
+  }
+  Object.entries(endpoint.params || {}).forEach(([key, value]) => {
+    url.searchParams.set(key, String(value));
+  });
+  Object.entries(params).forEach(([key, value]) => {
+    if (key && value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  });
+
+  const headers = new Headers({ Accept: 'application/json' });
+  const apiKey = provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : null;
+  if (provider.auth.type !== 'none') {
+    if (!apiKey) throw new Error(`Set ${provider.apiKeyEnv} to use ${provider.name}.`);
+    if (provider.auth.type === 'bearer') headers.set('Authorization', `Bearer ${apiKey}`);
+    if (provider.auth.type === 'header') headers.set(provider.auth.name, apiKey);
+    if (provider.auth.type === 'query') url.searchParams.set(provider.auth.name, apiKey);
+  }
+
+  const response = await fetch(url, {
+    headers,
+    redirect: 'error',
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error(`${provider.name} returned HTTP ${response.status}.`);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`${provider.name} did not return JSON data.`);
+  }
+  return response.json();
+}
+
+async function buildCustomProviderMarketData(provider, chartSymbol, exchange) {
+  if (!isProviderAvailable(provider, exchange)) {
+    throw new Error(`${provider.name} is not configured for use. Check its server-side API key setting.`);
+  }
+
+  const watchlist = getWatchlist(exchange);
+  const quoteEndpoint = provider.quote;
+  const quoteResults = await Promise.allSettled(watchlist.map(async (symbol) => {
+    const params = {
+      [quoteEndpoint.symbolParam || 'symbol']: symbol
+    };
+    if (quoteEndpoint.exchangeParam) params[quoteEndpoint.exchangeParam] = exchange;
+    const payload = await fetchCustomJson(provider, quoteEndpoint, params);
+    const fields = quoteEndpoint.fields;
+    const price = parseNumber(getMappedValue(payload, fields.price));
+    const currency = fields.currency
+      ? getMappedValue(payload, fields.currency)
+      : quoteEndpoint.currency;
+    const returnedExchange = fields.exchange
+      ? getMappedValue(payload, fields.exchange)
+      : quoteEndpoint.exchange || (quoteEndpoint.exchangeParam ? exchange : null);
+    if (price === null || price <= 0) throw new Error(`No valid price returned for ${symbol}.`);
+    if (String(currency || '').toUpperCase() !== 'INR') {
+      throw new Error(`Expected INR data for ${symbol}, received ${currency}.`);
+    }
+    if (String(returnedExchange || '').toUpperCase() !== exchange) {
+      throw new Error(`Expected ${exchange} data for ${symbol}, received ${returnedExchange}.`);
+    }
+    const marketOpen = fields.marketOpen ? getMappedValue(payload, fields.marketOpen) : null;
+    return {
+      symbol,
+      name: fields.name ? String(getMappedValue(payload, fields.name) || symbol) : symbol,
+      price,
+      change: fields.change ? parseNumber(getMappedValue(payload, fields.change)) : null,
+      percentChange: fields.percentChange ? parseNumber(getMappedValue(payload, fields.percentChange)) : null,
+      currency: currency || 'INR',
+      timestamp: fields.timestamp ? parseTimestamp(getMappedValue(payload, fields.timestamp)) : null,
+      marketOpen: marketOpen === true || marketOpen === 'true'
+        ? true
+        : marketOpen === false || marketOpen === 'false'
+          ? false
+          : null
+    };
+  }));
+  const quotes = quoteResults
+    .filter((result) => result.status === 'fulfilled')
+    .map((result) => result.value);
+  const errors = quoteResults
+    .map((result, index) => result.status === 'rejected'
+      ? `${watchlist[index]}: ${result.reason.message}`
+      : null)
+    .filter(Boolean);
+
+  let chart = [];
+  if (provider.chart) {
+    try {
+      const endpoint = provider.chart;
+      const params = { [endpoint.symbolParam || 'symbol']: chartSymbol };
+      if (endpoint.exchangeParam) params[endpoint.exchangeParam] = exchange;
+      if (endpoint.intervalParam && endpoint.interval) params[endpoint.intervalParam] = endpoint.interval;
+      const payload = await fetchCustomJson(provider, endpoint, params);
+      const values = getMappedValue(payload, endpoint.pointsPath);
+      if (!Array.isArray(values)) throw new Error('Configured chart pointsPath did not return an array.');
+      chart = values.map((point) => ({
+        time: endpoint.timeField ? parseTimestamp(getMappedValue(point, endpoint.timeField)) : null,
+        close: endpoint.closeField ? parseNumber(getMappedValue(point, endpoint.closeField)) : null
+      })).filter((point) => point.time && point.close !== null)
+        .sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
+    } catch (error) {
+      errors.push(`Chart: ${error.message}`);
+    }
+  }
+
+  let exchangeRate = null;
+  let exchangeRateUpdatedAt = null;
+  if (provider.fx) {
+    try {
+      const endpoint = provider.fx;
+      const params = endpoint.symbol
+        ? { [endpoint.symbolParam || 'symbol']: endpoint.symbol }
+        : {};
+      const payload = await fetchCustomJson(provider, endpoint, params);
+      exchangeRate = parseNumber(getMappedValue(payload, endpoint.fields.rate));
+      exchangeRateUpdatedAt = endpoint.fields.timestamp
+        ? parseTimestamp(getMappedValue(payload, endpoint.fields.timestamp))
+        : null;
+      if (exchangeRate === null || exchangeRate <= 0) throw new Error('No valid USD/INR rate returned.');
+    } catch (error) {
+      errors.push(`USD/INR: ${error.message}`);
+    }
+  }
+
+  return {
+    configured: true,
+    source: `custom:${provider.id}`,
+    provider: provider.name,
+    currency: 'INR',
+    exchange,
+    refreshSeconds: REFRESH_SECONDS,
+    updatedAt: new Date().toISOString(),
+    quotes,
+    chart,
+    chartSymbol,
+    chartSymbols: watchlist,
+    exchangeRate,
+    exchangeRateUpdatedAt,
+    exchangeRateSource: provider.fx ? provider.name : null,
+    errors,
+    error: quotes.length === 0
+      ? `${provider.name} did not return any valid ${exchange} quotes.`
+      : null,
+    disclaimer: `Data from ${provider.name}; timestamp quality, exchange coverage, and real-time availability depend on that provider and your account.`
   };
 }
 
@@ -543,7 +819,28 @@ async function buildAlphaVantageMarketData(chartSymbol = getExchangeChartSymbol(
   };
 }
 
-async function buildMarketData(chartSymbol = getExchangeChartSymbol('NSE'), exchange = 'NSE') {
+async function buildMarketData(chartSymbol = getExchangeChartSymbol('NSE'), exchange = 'NSE', requestedProvider = 'auto') {
+  if (!BUILT_IN_PROVIDERS.has(requestedProvider)) {
+    const providerId = requestedProvider.startsWith('custom:')
+      ? requestedProvider.slice('custom:'.length)
+      : '';
+    const customProvider = CUSTOM_PROVIDERS.find((provider) => provider.id === providerId);
+    if (!customProvider) throw new Error('Choose a configured market-data provider.');
+    return buildCustomProviderMarketData(customProvider, chartSymbol, exchange);
+  }
+
+  if (requestedProvider === 'yahoo') return buildYahooMarketData(chartSymbol, exchange);
+  if (requestedProvider === 'twelvedata') {
+    if (!API_KEY) throw new Error('Twelve Data is not configured. Set TWELVE_DATA_API_KEY on the dashboard server.');
+    return buildTwelveDataMarketData(chartSymbol, exchange);
+  }
+  if (requestedProvider === 'alpha-vantage') {
+    if (!ALPHA_VANTAGE_API_KEY || !hasCompleteAlphaVantageMapping(exchange)) {
+      throw new Error(`Alpha Vantage is not fully configured for ${exchange}.`);
+    }
+    return buildAlphaVantageMarketData(chartSymbol, exchange);
+  }
+
   const providerErrors = [];
 
   if (API_KEY) {
@@ -574,18 +871,23 @@ async function buildMarketData(chartSymbol = getExchangeChartSymbol('NSE'), exch
   return fallback;
 }
 
-async function getMarketData(chartSymbol = getExchangeChartSymbol('NSE'), exchange = 'NSE') {
+async function getMarketData(chartSymbol = getExchangeChartSymbol('NSE'), exchange = 'NSE', provider = 'auto') {
   if (!EXCHANGES.includes(exchange)) {
     throw new Error('Requested exchange is not supported.');
   }
   if (!getWatchlist(exchange).includes(chartSymbol)) {
     throw new Error(`Requested chart symbol is not in the configured ${exchange} watchlist.`);
   }
-  const cacheKey = `${exchange}:${chartSymbol}`;
+  if (typeof provider !== 'string'
+    || (!BUILT_IN_PROVIDERS.has(provider)
+      && !CUSTOM_PROVIDERS.some((candidate) => provider === `custom:${candidate.id}`))) {
+    throw new Error('Requested market-data provider is not configured.');
+  }
+  const cacheKey = `${provider}:${exchange}:${chartSymbol}`;
   const cached = marketDataCache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < REFRESH_INTERVAL_MS) return cached.data;
   if (!refreshInProgress.has(cacheKey)) {
-    const request = buildMarketData(chartSymbol, exchange)
+    const request = buildMarketData(chartSymbol, exchange, provider)
       .then((data) => {
         marketDataCache.set(cacheKey, { data, cachedAt: Date.now() });
         return data;
@@ -621,6 +923,10 @@ app.get('/config.js', sendPublicAsset('config.js'));
 const apiRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 30 });
 
 app.get('/api/health', apiRateLimiter, (_req, res) => {
+  const requestedExchange = typeof _req.query.exchange === 'string'
+    && EXCHANGES.includes(_req.query.exchange.trim().toUpperCase())
+    ? _req.query.exchange.trim().toUpperCase()
+    : 'NSE';
   res.json({
     ok: true,
     configured: true,
@@ -639,13 +945,14 @@ app.get('/api/health', apiRateLimiter, (_req, res) => {
         ? 'alpha-vantage-yahoo-fallback-where-mapped'
         : 'yahoo-finance-unofficial',
     exchanges: EXCHANGES,
-    exchange: 'NSE',
+    exchange: requestedExchange,
     currency: 'INR',
-    symbols: WATCHLISTS.NSE,
+    symbols: getWatchlist(requestedExchange),
     markets: Object.fromEntries(EXCHANGES.map((exchange) => [exchange, {
       symbols: getWatchlist(exchange),
       alphaVantageConfigured: Boolean(ALPHA_VANTAGE_API_KEY && hasCompleteAlphaVantageMapping(exchange))
     }])),
+    providers: getProviderOptions(requestedExchange),
     refreshSeconds: REFRESH_SECONDS
   });
 });
@@ -654,12 +961,15 @@ app.get('/api/status', apiRateLimiter, async (_req, res) => {
   const requestedExchange = typeof _req.query.exchange === 'string'
     ? _req.query.exchange.trim().toUpperCase()
     : 'NSE';
+  const requestedProvider = typeof _req.query.provider === 'string'
+    ? _req.query.provider.trim().toLowerCase()
+    : 'auto';
   if (!EXCHANGES.includes(requestedExchange)) {
     return res.status(400).json({ error: 'Choose NSE or BSE.' });
   }
 
   try {
-    const data = await getMarketData(getExchangeChartSymbol(requestedExchange), requestedExchange);
+    const data = await getMarketData(getExchangeChartSymbol(requestedExchange), requestedExchange, requestedProvider);
     const primaryQuote = data.quotes?.find((quote) => quote.symbol === getExchangeChartSymbol(requestedExchange));
     res.json({
       configured: data.configured,
@@ -689,8 +999,15 @@ app.get('/api/market-data', apiRateLimiter, async (_req, res) => {
   const requestedExchange = typeof _req.query.exchange === 'string'
     ? _req.query.exchange.trim().toUpperCase()
     : 'NSE';
+  const requestedProvider = typeof _req.query.provider === 'string'
+    ? _req.query.provider.trim().toLowerCase()
+    : 'auto';
   if (!EXCHANGES.includes(requestedExchange)) {
     return res.status(400).json({ error: 'Choose NSE or BSE.' });
+  }
+  if (!BUILT_IN_PROVIDERS.has(requestedProvider)
+    && !CUSTOM_PROVIDERS.some((provider) => requestedProvider === `custom:${provider.id}`)) {
+    return res.status(400).json({ error: 'Choose a configured market-data provider.' });
   }
   const chartSymbol = requestedSymbol || getExchangeChartSymbol(requestedExchange);
   if (!getWatchlist(requestedExchange).includes(chartSymbol)) {
@@ -698,7 +1015,7 @@ app.get('/api/market-data', apiRateLimiter, async (_req, res) => {
   }
 
   try {
-    res.json(await getMarketData(chartSymbol, requestedExchange));
+    res.json(await getMarketData(chartSymbol, requestedExchange, requestedProvider));
   } catch (error) {
     res.status(502).json({ error: `Unable to load ${requestedExchange} market data: ${error.message}` });
   }
@@ -722,10 +1039,12 @@ module.exports = {
   buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
   buildYahooMarketData,
+  buildCustomProviderMarketData,
   fetchAlphaVantageQuote,
   createCorsMiddleware,
   createRateLimiter,
   fetchAlphaVantageQuote,
   getMarketData,
+  getProviderOptions,
   getWatchlist
 };
