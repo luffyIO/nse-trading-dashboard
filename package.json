@@ -1,6 +1,6 @@
 {
   "name": "trading-bot",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "NSE market dashboard with paper-only strategy research",
   "productName": "NSE Trading Dashboard",
   "main": "electron/main.js",
