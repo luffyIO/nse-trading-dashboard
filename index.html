@@ -35,6 +35,8 @@
           </div>
         </header>
 
+        <div class="tab-panels" id="tabPanels">
+        <section class="tab-panel is-active" id="panel-market" role="tabpanel" aria-labelledby="tab-market" tabindex="0">
         <section class="toolbar">
           <div class="market-overview">
             <div class="toolbar-label">Indian equities</div>
@@ -125,6 +127,61 @@
           <svg id="chartSvg" viewBox="0 0 1020 420" role="img" aria-label="Trading chart"></svg>
         </div>
 
+        <div class="bottom-grid">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">Watchlist</span>
+                <h3>Your watchlist</h3>
+              </div>
+              <span class="panel-badge sample-badge" id="watchlistStatus">Waiting for feed</span>
+            </div>
+
+            <div class="table-wrap" tabindex="0" aria-label="Market movers table; scroll horizontally to see all columns">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="symbol">Symbol <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="price">Last (₹) <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="percentChange">Change <span aria-hidden="true"></span></button></th>
+                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="timestamp">Updated <span aria-hidden="true"></span></button></th>
+                  </tr>
+                </thead>
+                <tbody id="watchlist-body"></tbody>
+              </table>
+            </div>
+
+            <details class="top-gainers top-gainers-disclosure">
+              <summary>Top gainers in your watchlist</summary>
+              <ol class="top-gainers-list" id="topGainersList" aria-live="polite">
+                <li class="top-gainers-empty">Waiting for verified quote data.</li>
+              </ol>
+            </details>
+          </section>
+
+          <section class="panel narrative-panel">
+            <div class="panel-header compact">
+              <div>
+                <span class="panel-kicker">Data connection</span>
+                <h3>Market data source</h3>
+              </div>
+            </div>
+
+            <div class="signal-box">
+              <div class="signal-label">Selected provider · upstream freshness varies</div>
+              <p id="feedMessage">
+                  Connecting to the selected exchange, chart, and USD/INR data sources.
+              </p>
+            </div>
+
+            <div class="signal-disclaimer" id="feedDisclaimer">
+              Provider availability, exchange coverage, and latency depend on your account and data entitlements. Yahoo Finance fallback data is unofficial and has no real-time guarantee.
+            </div>
+          </section>
+        </div>
+        </section>
+
+        <section class="tab-panel" id="panel-assistant" role="tabpanel" aria-labelledby="tab-assistant" tabindex="0" hidden>
         <section class="panel market-assistant" aria-labelledby="marketAssistantTitle">
           <div class="panel-header">
             <div>
@@ -152,8 +209,10 @@
             <p class="assistant-intro"><code>add strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, <code>update strategy &lt;name&gt; EMA &lt;fast&gt;/&lt;slow&gt;</code>, and <code>backtest strategy &lt;name&gt;</code>.</p>
           </details>
         </section>
+        </section>
 
-        <details class="strategy-section">
+        <section class="tab-panel" id="panel-strategy" role="tabpanel" aria-labelledby="tab-strategy" tabindex="0" hidden>
+        <details class="strategy-section" open>
           <summary class="strategy-heading">
             <div>
               <span class="panel-kicker">Optional · educational only</span>
@@ -300,59 +359,239 @@
             </div>
           </details>
         </details>
+        </section>
 
-        <div class="bottom-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <span class="panel-kicker">Watchlist</span>
-                <h3>Your watchlist</h3>
+        <section class="tab-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+          <div class="settings-grid">
+            <section class="panel settings-card" aria-labelledby="settingsAppearanceTitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Preferences</span>
+                  <h3 id="settingsAppearanceTitle">Appearance</h3>
+                </div>
               </div>
-              <span class="panel-badge sample-badge" id="watchlistStatus">Waiting for feed</span>
-            </div>
-
-            <div class="table-wrap" tabindex="0" aria-label="Market movers table; scroll horizontally to see all columns">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="symbol">Symbol <span aria-hidden="true"></span></button></th>
-                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="price">Last (₹) <span aria-hidden="true"></span></button></th>
-                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="percentChange">Change <span aria-hidden="true"></span></button></th>
-                    <th scope="col" aria-sort="none"><button class="table-sort-button" type="button" data-sort-key="timestamp">Updated <span aria-hidden="true"></span></button></th>
-                  </tr>
-                </thead>
-                <tbody id="watchlist-body"></tbody>
-              </table>
-            </div>
-
-            <details class="top-gainers top-gainers-disclosure">
-              <summary>Top gainers in your watchlist</summary>
-              <ol class="top-gainers-list" id="topGainersList" aria-live="polite">
-                <li class="top-gainers-empty">Waiting for verified quote data.</li>
-              </ol>
-            </details>
-          </section>
-
-          <section class="panel narrative-panel">
-            <div class="panel-header compact">
-              <div>
-                <span class="panel-kicker">Data connection</span>
-                <h3>Market data source</h3>
+              <div class="settings-list">
+                <label class="settings-row" for="settingsDarkTheme">
+                  <span class="settings-row-copy">
+                    <strong>Dark theme</strong>
+                    <small>Use the dark dashboard palette. The top-bar button switches the same setting.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsDarkTheme" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+                <label class="settings-row" for="settingsCompactLayout">
+                  <span class="settings-row-copy">
+                    <strong>Compact layout</strong>
+                    <small>Tighten panel spacing so more of the chart and tables fit on screen.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsCompactLayout" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+                <label class="settings-row" for="settingsReduceMotion">
+                  <span class="settings-row-copy">
+                    <strong>Reduce motion</strong>
+                    <small>Disable non-essential animation even if the system preference allows it.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsReduceMotion" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
               </div>
-            </div>
+            </section>
 
-            <div class="signal-box">
-              <div class="signal-label">Selected provider · upstream freshness varies</div>
-              <p id="feedMessage">
-                  Connecting to the selected exchange, chart, and USD/INR data sources.
+            <section class="panel settings-card" aria-labelledby="settingsDataTitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Market data</span>
+                  <h3 id="settingsDataTitle">Data & refresh</h3>
+                </div>
+                <span class="panel-badge sample-badge" id="settingsFeedBadge">Waiting for feed</span>
+              </div>
+              <div class="settings-list">
+                <label class="settings-row settings-row-stacked" for="settingsExchangeSelect">
+                  <span class="settings-row-copy">
+                    <strong>Exchange</strong>
+                    <small>Choose the market whose watchlist, quotes, and chart are loaded.</small>
+                  </span>
+                  <span class="chart-symbol-control market-exchange-control">
+                    <span class="visually-hidden">Exchange</span>
+                    <select id="settingsExchangeSelect" aria-label="Select NSE or BSE market">
+                      <option value="NSE">NSE · National Stock Exchange</option>
+                      <option value="BSE">BSE · Bombay Stock Exchange</option>
+                    </select>
+                  </span>
+                </label>
+                <label class="settings-row settings-row-stacked" for="settingsProviderSelect">
+                  <span class="settings-row-copy">
+                    <strong>Data provider</strong>
+                    <small>Selecting a specific provider disables fallback so provider errors stay visible. Credentials stay on the API server.</small>
+                  </span>
+                  <span class="chart-symbol-control market-provider-control">
+                    <span class="visually-hidden">Data provider</span>
+                    <select id="settingsProviderSelect" aria-label="Select a configured market-data provider">
+                      <option value="auto">Auto · default fallback</option>
+                    </select>
+                  </span>
+                  <small class="provider-availability" id="settingsProviderAvailability">Provider options are loaded from the server.</small>
+                </label>
+                <label class="settings-row settings-row-stacked" for="settingsRefreshSeconds">
+                  <span class="settings-row-copy">
+                    <strong>Refresh interval</strong>
+                    <small>How often the dashboard polls for new quotes. The server enforces a 30-second minimum and caches responses.</small>
+                  </span>
+                  <span class="chart-symbol-control market-provider-control">
+                    <span class="visually-hidden">Refresh interval</span>
+                    <select id="settingsRefreshSeconds" aria-label="Select the dashboard refresh interval">
+                      <option value="30">Every 30 seconds</option>
+                      <option value="60">Every 60 seconds</option>
+                      <option value="120">Every 2 minutes</option>
+                      <option value="300">Every 5 minutes</option>
+                    </select>
+                  </span>
+                </label>
+                <label class="settings-row" for="settingsAutoRefresh">
+                  <span class="settings-row-copy">
+                    <strong>Automatic refresh</strong>
+                    <small>Poll for new market data in the background. Turn this off to freeze the current snapshot.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsAutoRefresh" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel settings-card" aria-labelledby="settingsDisplayTitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Dashboard</span>
+                  <h3 id="settingsDisplayTitle">Display</h3>
+                </div>
+              </div>
+              <div class="settings-list">
+                <label class="settings-row" for="settingsShowEma">
+                  <span class="settings-row-copy">
+                    <strong>Show EMA overlay</strong>
+                    <small>Draw the short exponential moving average over the intraday price line.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsShowEma" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+                <label class="settings-row" for="settingsShowGainerHighlights">
+                  <span class="settings-row-copy">
+                    <strong>Highlight watchlist gainers</strong>
+                    <small>Mark positive daily performers inside the configured watchlist.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsShowGainerHighlights" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+                <label class="settings-row" for="settingsShowProviderMeta">
+                  <span class="settings-row-copy">
+                    <strong>Show provider metadata</strong>
+                    <small>Display provider timestamps and freshness notes under quotes and the USD/INR rate.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsShowProviderMeta" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel settings-card" aria-labelledby="settingsUpdateTitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Updates</span>
+                  <h3 id="settingsUpdateTitle">Update engine</h3>
+                </div>
+                <span class="panel-badge sample-badge" id="updateStatusBadge">Not checked</span>
+              </div>
+              <p class="assistant-intro" id="updateSummary">
+                Checks the GitHub releases feed for the latest published version of this dashboard. The check runs against the public GitHub API and does not send any local data.
               </p>
-            </div>
+              <div class="settings-list">
+                <label class="settings-row" for="settingsAutoUpdateCheck">
+                  <span class="settings-row-copy">
+                    <strong>Check for updates on launch</strong>
+                    <small>Run the release check automatically when the dashboard opens.</small>
+                  </span>
+                  <span class="switch">
+                    <input id="settingsAutoUpdateCheck" type="checkbox" role="switch" />
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </div>
+              <div class="settings-update-meta">
+                <div><span>Installed version</span><strong id="updateCurrentVersion">—</strong></div>
+                <div><span>Latest release</span><strong id="updateLatestVersion">—</strong></div>
+                <div><span>Published</span><strong id="updatePublishedAt">—</strong></div>
+              </div>
+              <div class="settings-actions">
+                <button class="assistant-prompt" id="updateCheckButton" type="button">Check for updates</button>
+                <button class="assistant-prompt" id="updateOpenReleasesButton" type="button">Open releases page</button>
+              </div>
+              <p class="assistant-storage-status" id="updateStatusMessage" role="status"></p>
+              <div class="update-release-notes" id="updateReleaseNotes" hidden></div>
+            </section>
 
-            <div class="signal-disclaimer" id="feedDisclaimer">
-              Provider availability, exchange coverage, and latency depend on your account and data entitlements. Yahoo Finance fallback data is unofficial and has no real-time guarantee.
-            </div>
-          </section>
+            <section class="panel settings-card" aria-labelledby="settingsStorageTitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">This device</span>
+                  <h3 id="settingsStorageTitle">Saved data</h3>
+                </div>
+              </div>
+              <p class="assistant-intro">
+                Theme, conversation, strategy, and agent history stay in this browser on this device. Clearing them does not affect your market-data provider account.
+              </p>
+              <div class="settings-actions">
+                <button class="assistant-prompt" id="settingsClearChat" type="button">Clear assistant chat</button>
+                <button class="assistant-prompt" id="settingsClearStrategies" type="button">Clear saved strategies</button>
+                <button class="assistant-prompt" id="settingsClearAgentHistory" type="button">Clear agent history</button>
+                <button class="assistant-prompt settings-danger" id="settingsResetAll" type="button">Reset all settings and saved data</button>
+              </div>
+              <p class="assistant-storage-status" id="settingsStorageStatus" role="status"></p>
+            </section>
+          </div>
+        </section>
         </div>
+
+        <nav class="bottom-nav" id="bottomNav" aria-label="Dashboard sections">
+          <button class="bottom-nav-item is-active" id="tab-market" type="button" role="tab" aria-selected="true" aria-controls="panel-market" data-tab-target="panel-market">
+            <span class="bottom-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation"><path d="M3 17.5 9 11l4 4 7.5-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 20h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+            <span class="bottom-nav-label">Market</span>
+          </button>
+          <button class="bottom-nav-item" id="tab-assistant" type="button" role="tab" aria-selected="false" aria-controls="panel-assistant" data-tab-target="panel-assistant" tabindex="-1">
+            <span class="bottom-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation"><path d="M20 15a3 3 0 0 1-3 3H8l-4 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="bottom-nav-label">Assistant</span>
+          </button>
+          <button class="bottom-nav-item" id="tab-strategy" type="button" role="tab" aria-selected="false" aria-controls="panel-strategy" data-tab-target="panel-strategy" tabindex="-1">
+            <span class="bottom-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation"><path d="M4 18V9m5 9V5m5 13v-6m5 6V8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+            <span class="bottom-nav-label">Strategy</span>
+          </button>
+          <button class="bottom-nav-item" id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab-target="panel-settings" tabindex="-1">
+            <span class="bottom-nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+            <span class="bottom-nav-label">Settings</span>
+          </button>
+        </nav>
 
       </div>
     </div>

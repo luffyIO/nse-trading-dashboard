@@ -12,6 +12,11 @@ const assistantMessages = document.getElementById('assistantMessages');
 const assistantForm = document.getElementById('assistantForm');
 const assistantInput = document.getElementById('assistantInput');
 const assistantStorageStatus = document.getElementById('assistantStorageStatus');
+const bottomNav = document.getElementById('bottomNav');
+const settingsProviderSelect = document.getElementById('settingsProviderSelect');
+const settingsExchangeSelect = document.getElementById('settingsExchangeSelect');
+const settingsProviderAvailability = document.getElementById('settingsProviderAvailability');
+const settingsRefreshSeconds = document.getElementById('settingsRefreshSeconds');
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
@@ -27,8 +32,23 @@ const CHART_SYMBOL_KEY = 'indian-market-dashboard-chart-symbol-v1';
 const EXCHANGE_KEY = 'indian-market-dashboard-exchange-v1';
 const PROVIDER_KEY = 'indian-market-dashboard-provider-v1';
 const CUSTOM_STRATEGIES_KEY = 'indian-market-dashboard-custom-strategies-v1';
+const SETTINGS_KEY = 'indian-market-dashboard-settings-v1';
+const ACTIVE_TAB_KEY = 'indian-market-dashboard-active-tab-v1';
+const RELEASES_URL = 'https://github.com/luffyIO/nse-trading-dashboard/releases';
 const MAX_CUSTOM_STRATEGIES = 8;
 const MAX_CHAT_MESSAGES = 100;
+const DEFAULT_SETTINGS = {
+  compactLayout: false,
+  reduceMotion: false,
+  autoRefresh: true,
+  refreshSeconds: 60,
+  showEma: true,
+  showGainerHighlights: true,
+  showProviderMeta: true,
+  autoUpdateCheck: true
+};
+const TAB_IDS = ['panel-market', 'panel-assistant', 'panel-strategy', 'panel-settings'];
+let settings = { ...DEFAULT_SETTINGS };
 let watchlistSortKey = null;
 let watchlistSortDirection = 1;
 let savedChatMessages = [];
@@ -38,6 +58,7 @@ let selectedProvider = 'auto';
 let marketDataRequestId = 0;
 let providerOptionsRequestId = 0;
 let customStrategies = [];
+let activeTab = 'panel-market';
 try {
   const savedExchange = localStorage.getItem(EXCHANGE_KEY);
   if (savedExchange === 'NSE' || savedExchange === 'BSE') selectedExchange = savedExchange;
@@ -50,6 +71,71 @@ try {
 } catch {
   selectedProvider = 'auto';
 }
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      settings = { ...DEFAULT_SETTINGS };
+      Object.keys(DEFAULT_SETTINGS).forEach((key) => {
+        if (saved[key] !== undefined && typeof saved[key] === typeof DEFAULT_SETTINGS[key]) {
+          settings[key] = saved[key];
+        }
+      });
+      if (!Number.isFinite(settings.refreshSeconds) || settings.refreshSeconds < 30) {
+        settings.refreshSeconds = DEFAULT_SETTINGS.refreshSeconds;
+      }
+    }
+  } catch {
+    settings = { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    setAssistantStorageStatus('Settings cannot be saved in this browser.');
+  }
+}
+
+function applySettings() {
+  document.documentElement.dataset.compact = String(settings.compactLayout);
+  document.documentElement.dataset.reduceMotion = String(settings.reduceMotion);
+  document.documentElement.dataset.showEma = String(settings.showEma);
+  document.documentElement.dataset.gainerHighlights = String(settings.showGainerHighlights);
+  document.documentElement.dataset.showProviderMeta = String(settings.showProviderMeta);
+
+  const darkThemeToggle = document.getElementById('settingsDarkTheme');
+  if (darkThemeToggle) darkThemeToggle.checked = document.documentElement.dataset.theme !== 'light';
+  const compactToggle = document.getElementById('settingsCompactLayout');
+  if (compactToggle) compactToggle.checked = settings.compactLayout;
+  const reduceMotionToggle = document.getElementById('settingsReduceMotion');
+  if (reduceMotionToggle) reduceMotionToggle.checked = settings.reduceMotion;
+  const autoRefreshToggle = document.getElementById('settingsAutoRefresh');
+  if (autoRefreshToggle) autoRefreshToggle.checked = settings.autoRefresh;
+  const showEmaToggle = document.getElementById('settingsShowEma');
+  if (showEmaToggle) showEmaToggle.checked = settings.showEma;
+  const gainerToggle = document.getElementById('settingsShowGainerHighlights');
+  if (gainerToggle) gainerToggle.checked = settings.showGainerHighlights;
+  const providerMetaToggle = document.getElementById('settingsShowProviderMeta');
+  if (providerMetaToggle) providerMetaToggle.checked = settings.showProviderMeta;
+  const autoUpdateToggle = document.getElementById('settingsAutoUpdateCheck');
+  if (autoUpdateToggle) autoUpdateToggle.checked = settings.autoUpdateCheck;
+  if (settingsRefreshSeconds) settingsRefreshSeconds.value = String(settings.refreshSeconds);
+  if (settingsExchangeSelect) settingsExchangeSelect.value = selectedExchange;
+
+  renderChart(window.latestMarketChart || []);
+}
+
+function getRefreshIntervalSeconds(serverSeconds) {
+  const requested = Number(settings.refreshSeconds);
+  const server = Number(serverSeconds);
+  if (Number.isFinite(requested) && requested >= 30) return requested;
+  if (Number.isFinite(server) && server >= 30) return server;
+  return 60;
+}
+
 
 function getSavedTheme() {
   try {
@@ -67,6 +153,8 @@ function applyTheme(theme, persist = false) {
     themeToggle.setAttribute('aria-label', `Switch to ${nextTheme === 'dark' ? 'light' : 'dark'} theme`);
     themeToggle.title = '';
   }
+  const darkThemeToggle = document.getElementById('settingsDarkTheme');
+  if (darkThemeToggle) darkThemeToggle.checked = nextTheme === 'dark';
   if (persist) {
     try {
       localStorage.setItem(THEME_KEY, nextTheme);
@@ -83,6 +171,86 @@ if (themeToggle) {
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Bottom navigation and tabs                                          */
+/* ------------------------------------------------------------------ */
+
+function getTabButtons() {
+  return Array.from(document.querySelectorAll('.bottom-nav-item[data-tab-target]'));
+}
+
+function setActiveTab(tabId, { focus = false } = {}) {
+  if (!TAB_IDS.includes(tabId)) return;
+  activeTab = tabId;
+
+  TAB_IDS.forEach((id) => {
+    const panel = document.getElementById(id);
+    if (!panel) return;
+    const isActive = id === tabId;
+    panel.hidden = !isActive;
+    panel.classList.toggle('is-active', isActive);
+  });
+
+  getTabButtons().forEach((button) => {
+    const isActive = button.dataset.tabTarget === tabId;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
+    if (isActive && focus) button.focus();
+  });
+
+  try {
+    localStorage.setItem(ACTIVE_TAB_KEY, tabId);
+  } catch {
+    // The tab still switches when browser storage is unavailable.
+  }
+}
+
+function focusAdjacentTab(currentButton, offset) {
+  const buttons = getTabButtons();
+  const index = buttons.indexOf(currentButton);
+  if (index < 0) return;
+  const next = buttons[(index + offset + buttons.length) % buttons.length];
+  if (!next) return;
+  setActiveTab(next.dataset.tabTarget, { focus: true });
+}
+
+getTabButtons().forEach((button) => {
+  button.addEventListener('click', () => setActiveTab(button.dataset.tabTarget));
+  button.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusAdjacentTab(button, 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusAdjacentTab(button, -1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setActiveTab(TAB_IDS[0], { focus: true });
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setActiveTab(TAB_IDS[TAB_IDS.length - 1], { focus: true });
+    }
+  });
+});
+
+if (navMenuButton && bottomNav) {
+  navMenuButton.addEventListener('click', () => {
+    const isOpen = navMenuButton.getAttribute('aria-expanded') === 'true';
+    navMenuButton.setAttribute('aria-expanded', String(!isOpen));
+    navMenuButton.setAttribute('aria-label', isOpen ? 'Open navigation menu' : 'Close navigation menu');
+    bottomNav.classList.toggle('is-open', !isOpen);
+  });
+}
+
+let savedTab = null;
+try {
+  savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+} catch {
+  savedTab = null;
+}
+setActiveTab(TAB_IDS.includes(savedTab) ? savedTab : 'panel-market');
 
 function updateClock() {
   if (!liveClock) return;
@@ -551,6 +719,10 @@ async function refreshProviderOptions(exchange) {
     const providers = Array.isArray(data.providers) ? data.providers : [];
     providerSelect.disabled = false;
     providerSelect.replaceChildren();
+    if (settingsProviderSelect) {
+      settingsProviderSelect.disabled = false;
+      settingsProviderSelect.replaceChildren();
+    }
     let selectedAvailable = false;
     providers.forEach((provider) => {
       const option = document.createElement('option');
@@ -559,9 +731,11 @@ async function refreshProviderOptions(exchange) {
       option.disabled = !provider.available;
       if (provider.id === selectedProvider && provider.available) selectedAvailable = true;
       providerSelect.appendChild(option);
+      settingsProviderSelect?.appendChild(option.cloneNode(true));
     });
     if (!selectedAvailable) selectedProvider = 'auto';
     providerSelect.value = selectedProvider;
+    if (settingsProviderSelect) settingsProviderSelect.value = selectedProvider;
     if (!selectedAvailable) {
       try {
         localStorage.setItem(PROVIDER_KEY, selectedProvider);
@@ -570,10 +744,17 @@ async function refreshProviderOptions(exchange) {
       }
     }
     setText('providerAvailability', 'Keys stay on the server; provider freshness depends on its feed.');
+    if (settingsProviderAvailability) {
+      settingsProviderAvailability.textContent = 'Keys stay on the server; provider freshness depends on its feed.';
+    }
   } catch (error) {
     if (requestId !== providerOptionsRequestId) return;
     if (providerSelect) providerSelect.disabled = true;
+    if (settingsProviderSelect) settingsProviderSelect.disabled = true;
     setText('providerAvailability', `Provider list unavailable: ${error.message}`);
+    if (settingsProviderAvailability) {
+      settingsProviderAvailability.textContent = `Provider list unavailable: ${error.message}`;
+    }
   }
 }
 
@@ -597,6 +778,248 @@ exchangeSelect?.addEventListener('change', () => {
   }
   refreshProviderOptions(selectedExchange).finally(() => loadMarketData('', selectedExchange));
 });
+
+/* ------------------------------------------------------------------ */
+/* Settings tab                                                        */
+/* ------------------------------------------------------------------ */
+
+function setSettingsStorageStatus(message) {
+  const status = document.getElementById('settingsStorageStatus');
+  if (status) status.textContent = message;
+  setAssistantStorageStatus(message);
+}
+
+document.getElementById('settingsDarkTheme')?.addEventListener('change', (event) => {
+  applyTheme(event.target.checked ? 'dark' : 'light', true);
+});
+
+document.getElementById('settingsCompactLayout')?.addEventListener('change', (event) => {
+  settings.compactLayout = event.target.checked;
+  saveSettings();
+  applySettings();
+});
+
+document.getElementById('settingsReduceMotion')?.addEventListener('change', (event) => {
+  settings.reduceMotion = event.target.checked;
+  saveSettings();
+  applySettings();
+});
+
+document.getElementById('settingsShowEma')?.addEventListener('change', (event) => {
+  settings.showEma = event.target.checked;
+  saveSettings();
+  applySettings();
+});
+
+document.getElementById('settingsShowGainerHighlights')?.addEventListener('change', (event) => {
+  settings.showGainerHighlights = event.target.checked;
+  saveSettings();
+  applySettings();
+});
+
+document.getElementById('settingsShowProviderMeta')?.addEventListener('change', (event) => {
+  settings.showProviderMeta = event.target.checked;
+  saveSettings();
+  applySettings();
+});
+
+document.getElementById('settingsAutoRefresh')?.addEventListener('change', (event) => {
+  settings.autoRefresh = event.target.checked;
+  saveSettings();
+  if (settings.autoRefresh) {
+    loadMarketData();
+  } else {
+    clearTimeout(refreshTimer);
+    setConnectionStatus('Auto refresh paused', 'offline');
+    setText('feedLabel', 'Auto refresh paused');
+  }
+});
+
+document.getElementById('settingsAutoUpdateCheck')?.addEventListener('change', (event) => {
+  settings.autoUpdateCheck = event.target.checked;
+  saveSettings();
+  if (settings.autoUpdateCheck) checkForUpdates();
+});
+
+settingsRefreshSeconds?.addEventListener('change', () => {
+  const requested = Number(settingsRefreshSeconds.value);
+  settings.refreshSeconds = Number.isFinite(requested) && requested >= 30 ? requested : 60;
+  saveSettings();
+  if (settings.autoRefresh) loadMarketData();
+});
+
+settingsProviderSelect?.addEventListener('change', () => {
+  selectedProvider = settingsProviderSelect.value;
+  if (providerSelect) providerSelect.value = selectedProvider;
+  try {
+    localStorage.setItem(PROVIDER_KEY, selectedProvider);
+  } catch {
+    setAssistantStorageStatus('Provider preference cannot be saved in this browser.');
+  }
+  loadMarketData();
+});
+
+settingsExchangeSelect?.addEventListener('change', () => {
+  selectedExchange = settingsExchangeSelect.value === 'BSE' ? 'BSE' : 'NSE';
+  selectedChartSymbol = '';
+  if (exchangeSelect) exchangeSelect.value = selectedExchange;
+  try {
+    localStorage.setItem(EXCHANGE_KEY, selectedExchange);
+  } catch {
+    setAssistantStorageStatus('Exchange preference cannot be saved in this browser.');
+  }
+  refreshProviderOptions(selectedExchange).finally(() => loadMarketData('', selectedExchange));
+});
+
+document.getElementById('settingsClearChat')?.addEventListener('click', () => {
+  savedChatMessages = [];
+  renderAssistantHistory();
+  try {
+    localStorage.removeItem(CHAT_HISTORY_KEY);
+    setSettingsStorageStatus('Conversation cleared from this browser.');
+  } catch {
+    setSettingsStorageStatus('Could not clear the saved conversation because browser storage is unavailable.');
+  }
+});
+
+document.getElementById('settingsClearStrategies')?.addEventListener('click', () => {
+  customStrategies = [];
+  try {
+    localStorage.removeItem(CUSTOM_STRATEGIES_KEY);
+  } catch {
+    setSettingsStorageStatus('Could not clear saved strategies because browser storage is unavailable.');
+    return;
+  }
+  renderCustomStrategies();
+  setSettingsStorageStatus('Saved paper strategies cleared from this browser.');
+});
+
+document.getElementById('settingsClearAgentHistory')?.addEventListener('click', () => {
+  try {
+    localStorage.removeItem(AGENT_HISTORY_KEY);
+    setSettingsStorageStatus('Adaptive agent history cleared from this browser.');
+  } catch {
+    setSettingsStorageStatus('Could not clear agent history because browser storage is unavailable.');
+  }
+  if (window.latestMarketChart) {
+    renderAdaptiveAgent(window.latestMarketChart, selectedChartSymbol || selectedExchange, selectedExchange);
+  }
+});
+
+document.getElementById('settingsResetAll')?.addEventListener('click', () => {
+  settings = { ...DEFAULT_SETTINGS };
+  savedChatMessages = [];
+  customStrategies = [];
+  try {
+    localStorage.removeItem(CHAT_HISTORY_KEY);
+    localStorage.removeItem(CUSTOM_STRATEGIES_KEY);
+    localStorage.removeItem(AGENT_HISTORY_KEY);
+    localStorage.removeItem(SETTINGS_KEY);
+    localStorage.removeItem(THEME_KEY);
+  } catch {
+    setSettingsStorageStatus('Some saved data could not be cleared because browser storage is unavailable.');
+  }
+  applyTheme('dark');
+  renderAssistantHistory();
+  renderCustomStrategies();
+  saveSettings();
+  applySettings();
+  setSettingsStorageStatus('Settings and saved data reset on this device.');
+});
+
+/* ------------------------------------------------------------------ */
+/* Update engine                                                        */
+/* ------------------------------------------------------------------ */
+
+function formatReleaseDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'medium'
+  }).format(date);
+}
+
+function setUpdateStatus(message) {
+  const status = document.getElementById('updateStatusMessage');
+  if (status) status.textContent = message;
+}
+
+function setUpdateBadge(label) {
+  const badge = document.getElementById('updateStatusBadge');
+  if (badge) badge.textContent = label;
+}
+
+function renderReleaseNotes(notes) {
+  const container = document.getElementById('updateReleaseNotes');
+  if (!container) return;
+  if (!notes || !notes.trim()) {
+    container.hidden = true;
+    container.textContent = '';
+    return;
+  }
+  container.hidden = false;
+  container.textContent = notes;
+}
+
+async function checkForUpdates({ force = false } = {}) {
+  const button = document.getElementById('updateCheckButton');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Checking…';
+  }
+  setUpdateBadge('Checking');
+  setUpdateStatus('Checking the GitHub releases feed for the latest published version…');
+
+  const configuredApiBase = getApiBaseUrl();
+  try {
+    const apiUrl = new URL(configuredApiBase
+      ? `${configuredApiBase}/api/releases`
+      : '/api/releases', window.location.origin);
+    if (force) apiUrl.searchParams.set('force', '1');
+    const response = await fetch(apiUrl, { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || `Update service returned HTTP ${response.status}`);
+    }
+
+    setText('updateCurrentVersion', data.currentVersion || '—');
+    setText('updateLatestVersion', data.latestVersion || 'No release published');
+    setText('updatePublishedAt', formatReleaseDate(data.publishedAt));
+    renderReleaseNotes(data.notes);
+
+    if (data.updateAvailable) {
+      setUpdateBadge('Update available');
+      setUpdateStatus(`Version ${data.latestVersion} is published on GitHub. This device is running ${data.currentVersion}. Download the installer for your platform from the releases page.`);
+    } else if (data.latestVersion) {
+      setUpdateBadge('Up to date');
+      setUpdateStatus(`This device is running the latest published version (${data.currentVersion}).`);
+    } else {
+      setUpdateBadge('No release yet');
+      setUpdateStatus('No published GitHub release was found for this repository yet.');
+    }
+  } catch (error) {
+    setUpdateBadge('Check failed');
+    setUpdateStatus(`Unable to check for updates: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Check for updates';
+    }
+  }
+}
+
+document.getElementById('updateCheckButton')?.addEventListener('click', () => {
+  checkForUpdates({ force: true });
+});
+
+document.getElementById('updateOpenReleasesButton')?.addEventListener('click', () => {
+  window.open(RELEASES_URL, '_blank', 'noopener,noreferrer');
+});
+
+loadSettings();
+applySettings();
 
 function updateCurrencyConversion() {
   const output = document.getElementById('inrAmount');
@@ -787,18 +1210,20 @@ function renderChart(points) {
     ema.push(average);
   });
 
-  const emaPoints = ema.map((value, index) => {
-    const x = margin.left + (index / (ema.length - 1)) * innerWidth;
-    return `${x},${priceY(value)}`;
-  }).join(' ');
-  svg.appendChild(createSvgElement('polyline', {
-    points: emaPoints,
-    fill: 'none',
-    stroke: document.documentElement.dataset.theme === 'light' ? '#087446' : '#2dff8e',
-    'stroke-width': 1.7,
-    'stroke-dasharray': '5 5',
-    opacity: 0.8
-  }));
+  if (settings.showEma) {
+    const emaPoints = ema.map((value, index) => {
+      const x = margin.left + (index / (ema.length - 1)) * innerWidth;
+      return `${x},${priceY(value)}`;
+    }).join(' ');
+    svg.appendChild(createSvgElement('polyline', {
+      points: emaPoints,
+      fill: 'none',
+      stroke: document.documentElement.dataset.theme === 'light' ? '#087446' : '#2dff8e',
+      'stroke-width': 1.7,
+      'stroke-dasharray': '5 5',
+      opacity: 0.8
+    }));
+  }
 
   const last = validPoints[validPoints.length - 1];
   const lastY = priceY(last.close);
@@ -1113,8 +1538,12 @@ function setMarketData(data) {
   renderChart(data.chart || []);
   renderStrategies(data.chart || [], data.chartSymbol || selectedExchange);
 
+  setText('settingsFeedBadge', badgeLabel);
+
   clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(loadMarketData, Math.max(30, Number(data.refreshSeconds) || 60) * 1000);
+  if (settings.autoRefresh) {
+    refreshTimer = setTimeout(loadMarketData, getRefreshIntervalSeconds(data.refreshSeconds) * 1000);
+  }
 }
 
 async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = selectedExchange) {
@@ -1170,10 +1599,15 @@ async function loadMarketData(chartSymbol = selectedChartSymbol, exchange = sele
     renderChart([]);
     renderStrategies([], exchange);
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(loadMarketData, 60000);
+    if (settings.autoRefresh) {
+      refreshTimer = setTimeout(loadMarketData, getRefreshIntervalSeconds(60) * 1000);
+    }
   }
 }
 
 updateClock();
 setInterval(updateClock, 1000);
 refreshProviderOptions(selectedExchange).finally(() => loadMarketData());
+if (settings.autoUpdateCheck) {
+  checkForUpdates();
+}

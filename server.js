@@ -3,6 +3,9 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
+const APP_VERSION = require('./package.json').version;
+const GITHUB_RELEASES_API = 'https://api.github.com/repos/luffyIO/nse-trading-dashboard/releases/latest';
+const RELEASES_CACHE_MS = 10 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   ...(process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
@@ -73,6 +76,8 @@ const marketDataCache = new Map();
 const refreshInProgress = new Map();
 const cachedAlphaVantageQuotes = new Map();
 const alphaVantageRefreshInProgress = new Map();
+let releasesCache = null;
+let releasesFetchInProgress = null;
 
 function loadCustomProviders(rawConfig) {
   if (!rawConfig) return [];
@@ -252,6 +257,89 @@ function sendPublicAsset(fileName) {
       if (error) next(error);
     });
   };
+}
+
+function parseReleaseVersion(value) {
+  const match = String(value || '').match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2] || 0),
+    patch: Number(match[3] || 0)
+  };
+}
+
+function isNewerVersion(candidate, current) {
+  if (!candidate || !current) return false;
+  for (const key of ['major', 'minor', 'patch']) {
+    if (candidate[key] > current[key]) return true;
+    if (candidate[key] < current[key]) return false;
+  }
+  return false;
+}
+
+async function fetchLatestRelease() {
+  const response = await fetch(GITHUB_RELEASES_API, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'nse-trading-dashboard',
+      'X-GitHub-Api-Version': '2022-11-28'
+    },
+    signal: AbortSignal.timeout(10000)
+  });
+
+  if (response.status === 404) {
+    return {
+      tag: null,
+      name: null,
+      publishedAt: null,
+      url: 'https://github.com/luffyIO/nse-trading-dashboard/releases',
+      notes: null,
+      assets: []
+    };
+  }
+  if (!response.ok) {
+    throw new Error(`GitHub returned HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return {
+    tag: typeof payload.tag_name === 'string' ? payload.tag_name : null,
+    name: typeof payload.name === 'string' ? payload.name : null,
+    publishedAt: payload.published_at || null,
+    url: typeof payload.html_url === 'string'
+      ? payload.html_url
+      : 'https://github.com/luffyIO/nse-trading-dashboard/releases',
+    notes: typeof payload.body === 'string' ? payload.body.slice(0, 4000) : null,
+    assets: Array.isArray(payload.assets)
+      ? payload.assets
+        .filter((asset) => asset && typeof asset.browser_download_url === 'string')
+        .map((asset) => ({
+          name: typeof asset.name === 'string' ? asset.name : 'download',
+          size: Number.isFinite(asset.size) ? asset.size : null,
+          downloadCount: Number.isFinite(asset.download_count) ? asset.download_count : null,
+          url: asset.browser_download_url
+        }))
+      : []
+  };
+}
+
+async function getLatestRelease({ force = false } = {}) {
+  if (!force && releasesCache && Date.now() - releasesCache.cachedAt < RELEASES_CACHE_MS) {
+    return releasesCache.data;
+  }
+  if (!releasesFetchInProgress) {
+    const request = fetchLatestRelease()
+      .then((release) => {
+        releasesCache = { data: release, cachedAt: Date.now() };
+        return release;
+      })
+      .finally(() => {
+        if (releasesFetchInProgress === request) releasesFetchInProgress = null;
+      });
+    releasesFetchInProgress = request;
+  }
+  return releasesFetchInProgress;
 }
 
 function parseNumber(value) {
@@ -1022,6 +1110,33 @@ app.get('/api/market-data', apiRateLimiter, async (_req, res) => {
   }
 });
 
+app.get('/api/releases', apiRateLimiter, async (req, res) => {
+  const force = req.query.force === '1' || req.query.force === 'true';
+  try {
+    const release = await getLatestRelease({ force });
+    const currentVersion = APP_VERSION;
+    const latestVersion = parseReleaseVersion(release.tag);
+    res.json({
+      ok: true,
+      currentVersion,
+      latestVersion: release.tag,
+      updateAvailable: isNewerVersion(latestVersion, parseReleaseVersion(currentVersion)),
+      publishedAt: release.publishedAt,
+      releaseUrl: release.url,
+      releaseName: release.name,
+      notes: release.notes,
+      assets: release.assets,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(502).json({
+      ok: false,
+      currentVersion: APP_VERSION,
+      error: `Unable to check GitHub releases: ${error.message}`
+    });
+  }
+});
+
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
@@ -1037,6 +1152,7 @@ if (require.main === module) {
 module.exports = {
   app,
   ALLOWED_ORIGINS,
+  APP_VERSION,
   buildMarketData,
   buildAlphaVantageMarketData,
   buildTwelveDataMarketData,
@@ -1046,7 +1162,11 @@ module.exports = {
   createCorsMiddleware,
   createRateLimiter,
   fetchAlphaVantageQuote,
+  fetchLatestRelease,
+  getLatestRelease,
   getMarketData,
   getProviderOptions,
-  getWatchlist
+  getWatchlist,
+  isNewerVersion,
+  parseReleaseVersion
 };
