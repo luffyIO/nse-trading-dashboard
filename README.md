@@ -18,10 +18,11 @@ Responsive NSE and BSE dashboard with selectable market-data providers, a privat
 
 ## Setup
 
-1. Install and start the app for free Yahoo Finance data:
+1. Clone the repository, then install and start the app for free Yahoo Finance data:
 
-```powershell
-cd "C:\Users\mail2\Downloads\Trading Bot"
+```sh
+git clone https://github.com/luffyIO/nse-trading-dashboard.git
+cd nse-trading-dashboard
 npm install
 npm start
 ```
@@ -219,3 +220,8 @@ This is not a self-modifying neural network or an execution bot. It does not sub
 - `GET /api/health` — provider mode and NSE/BSE watchlists
 - `GET /api/status?exchange=NSE|BSE` — selected market's primary instrument status
 - `GET /api/market-data?exchange=NSE|BSE&symbol=SYMBOL` — selected exchange watchlist, chart series, and USD/INR reference quote
+- `GET /api/releases?force=1` — compares the installed version with the latest public GitHub release; `force=1` bypasses the ten-minute cache. Returns an error state rather than an update suggestion when GitHub is unreachable
+
+## License
+
+Released under the ISC license. See [LICENSE](LICENSE).

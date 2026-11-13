@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY server.js config.js index.html styles.css script.js strategy-engine.js ./
+COPY server.js config.js index.html styles.css script.js strategy-engine.js favicon.svg ./
 
 USER node
 EXPOSE 3000

@@ -1008,6 +1008,7 @@ app.get('/styles.css', sendPublicAsset('styles.css'));
 app.get('/script.js', sendPublicAsset('script.js'));
 app.get('/strategy-engine.js', sendPublicAsset('strategy-engine.js'));
 app.get('/config.js', sendPublicAsset('config.js'));
+app.get('/favicon.svg', sendPublicAsset('favicon.svg'));
 
 const apiRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 30 });
 

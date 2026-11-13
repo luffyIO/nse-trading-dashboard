@@ -235,14 +235,6 @@ getTabButtons().forEach((button) => {
   });
 });
 
-if (navMenuButton && bottomNav) {
-  navMenuButton.addEventListener('click', () => {
-    const isOpen = navMenuButton.getAttribute('aria-expanded') === 'true';
-    navMenuButton.setAttribute('aria-expanded', String(!isOpen));
-    navMenuButton.setAttribute('aria-label', isOpen ? 'Open navigation menu' : 'Close navigation menu');
-    bottomNav.classList.toggle('is-open', !isOpen);
-  });
-}
 
 let savedTab = null;
 try {

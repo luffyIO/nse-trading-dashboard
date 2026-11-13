@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const STATIC_FILES = ['index.html', 'script.js', 'strategy-engine.js', 'styles.css'];
+const STATIC_FILES = ['index.html', 'script.js', 'strategy-engine.js', 'styles.css', 'favicon.svg'];
 
 function buildPages(apiBaseUrl, outputDirectory) {
   if (!apiBaseUrl) {

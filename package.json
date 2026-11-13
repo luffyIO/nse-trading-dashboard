@@ -1,6 +1,6 @@
 {
   "name": "trading-bot",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "NSE market dashboard with paper-only strategy research",
   "productName": "NSE Trading Dashboard",
   "main": "electron/main.js",
@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test",
+    "test:browser": "playwright test",
     "build:pages": "node build-pages.js",
     "build:android": "node build-android.js",
     "desktop": "electron .",
@@ -18,6 +19,9 @@
   "keywords": [],
   "author": "luffyIO <116873883+luffyIO@users.noreply.github.com>",
   "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  },
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^18.0.9",
@@ -27,9 +31,9 @@
     "@capacitor/android": "^7.6.10",
     "@capacitor/cli": "^7.6.10",
     "@capacitor/core": "^7.6.10",
+    "@playwright/test": "^1.65.0",
     "electron": "^45.2.3",
-    "electron-builder": "^26.18.0",
-    "playwright": "^1.65.0"
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.luffyio.nsetradingdashboard",
@@ -45,6 +49,7 @@
       "styles.css",
       "script.js",
       "strategy-engine.js",
+      "favicon.svg",
       "server.js",
       "config.js",
       "!test{,/**/*}",
