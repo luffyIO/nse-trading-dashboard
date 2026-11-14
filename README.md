@@ -1,9 +1,12 @@
 # Indian Market Dashboard
 
-Responsive NSE and BSE dashboard with selectable market-data providers, a private market chat that can create and backtest EMA strategies, exchange-specific watchlists, selectable intraday charts, an indicative USD/INR converter, dark/light themes, and an educational paper-strategy lab. It supports Twelve Data, mapped Alpha Vantage quotes, Yahoo Finance's unofficial fallback, and server-configured custom REST providers. It is read-only and does not place trades or connect to a brokerage account.
+Responsive NSE and BSE dashboard with selectable market-data providers, a private market chat that can create and backtest EMA strategies, exchange-specific watchlists, selectable intraday charts, an indicative USD/INR converter, dark/light themes, an educational paper-strategy lab, bottom navigation tabs, a settings tab, and an update engine that checks GitHub releases. It supports Twelve Data, mapped Alpha Vantage quotes, Yahoo Finance's unofficial fallback, and server-configured custom REST providers. It is read-only and does not place trades or connect to a brokerage account.
 
 ## Features
 
+- **Bottom navigation tabs:** Market, Assistant, Strategy, and Settings live in separate tabs so each workflow has its own focused view. The active tab is remembered on the device and the tab bar is keyboard-operable with arrow, Home, and End keys.
+- **Settings tab:** Appearance (dark theme, compact layout, reduce motion), market data (exchange, provider, refresh interval, automatic refresh), display (EMA overlay, gainer highlights, provider metadata), an update engine, and controls to clear saved data.
+- **Update engine:** Checks the GitHub releases feed for the latest published version, compares it with the installed version, and shows the release date and notes. It reports "up to date", "update available", or an explicit failure; it never guesses a version.
 - **Market assistant:** Local, chat-style summaries plus commands to add, update, list, and backtest paper-only EMA strategies. Results are computed from the currently available historical chart bars and saved in this browser; messages are not sent to an AI service.
 - **Watchlist gainers:** Highlights positive daily performers within the configured watchlist (not the whole NSE).
 - **NSE and BSE watchlists:** Switch exchanges; quote and chart symbols are requested for the selected exchange.
@@ -11,10 +14,10 @@ Responsive NSE and BSE dashboard with selectable market-data providers, a privat
 - **USD/INR reference and converter:** Displays the configured provider's FX quote timestamp when available and calculates an indicative conversion locally. It is not a guaranteed live or executable exchange rate.
 - **Selectable market data providers:** Choose auto, a configured built-in source, or a server-configured custom provider. Provider credentials stay on the API server. Timestamps, exchange access, and real-time availability depend on the provider and account; no real-time guarantee is made.
 - **Saved themes and conversations:** Dark/light theme and chat history persist on the device.
-- **Simplified dashboard:** Exchange selection and key market data stay prominent; provider settings, top gainers, and the optional strategy lab are available when needed.
 - **Responsive accessible UI:** Keyboard-operable controls and layouts for desktop and mobile.
 - **No fabricated prices:** Provider failures are shown as unavailable rather than replaced with synthetic quotes.
 - **Paper-only research:** Strategy lab and adaptive paper agent do not submit orders or connect to a broker.
+
 
 ## Setup
 
@@ -217,10 +220,39 @@ This is not a self-modifying neural network or an execution bot. It does not sub
 
 ## API endpoints
 
-- `GET /api/health` — provider mode and NSE/BSE watchlists
+- `GET /api/health` — provider mode, NSE/BSE watchlists, and the installed dashboard version
 - `GET /api/status?exchange=NSE|BSE` — selected market's primary instrument status
 - `GET /api/market-data?exchange=NSE|BSE&symbol=SYMBOL` — selected exchange watchlist, chart series, and USD/INR reference quote
-- `GET /api/releases?force=1` — compares the installed version with the latest public GitHub release; `force=1` bypasses the ten-minute cache. Returns an error state rather than an update suggestion when GitHub is unreachable
+- `GET /api/releases?force=1` — compares the installed version with the latest public GitHub release; `force=1` bypasses the ten-minute cache. Returns an error state rather than an update suggestion when GitHub is unreachable. The summary also includes the release date, notes, and installer assets.
+
+The GitHub Pages deployment calls the same endpoints on the configured API host, so the update engine works from the static site as well as from the bundled desktop and Android clients. Add the Pages origin to `CORS_ALLOWED_ORIGINS` on the API host so the browser may read the release summary.
+
+## Update engine
+
+The Settings tab can check GitHub for the latest published release of this repository. The check runs server-side against the public GitHub releases API, so the browser never needs a GitHub credential and the page's Content Security Policy stays restrictive. The server compares semantic versions and reports one of three states:
+
+- **Up to date** — the installed version matches the latest published release.
+- **Update available** — a newer release is published; the release date, notes, and installer links are shown so the user can download the build for their platform.
+- **Check failed** — the check could not complete; the error is reported instead of guessing a version.
+
+Release checks are rate-limited like the other API routes and cached for ten minutes. Set an optional `GITHUB_TOKEN` on the server to raise the GitHub API rate limit for hosted deployments; the token is never sent to the browser.
+
+```env
+GITHUB_TOKEN=
+```
+
+The dashboard never installs or replaces the running application on its own. It reports what is published and links to the release assets; downloading and installing an update stays an explicit user action.
+
+## Navigation and tabs
+
+The dashboard is split into four bottom-navigation tabs:
+
+- **Market** — overview metrics, intraday chart, watchlist table, top gainers, and the market data source panel.
+- **Assistant** — the private market assistant and its strategy commands.
+- **Strategy** — the adaptive paper agent, custom strategies, built-in backtests, and the risk disclosure.
+- **Settings** — appearance, market data, display, update engine, and saved-data controls.
+
+Only the active tab is rendered, so hidden panels cannot show stale values. The active tab is stored in local storage on the device. The tab bar supports `ArrowLeft`, `ArrowRight`, `Home`, and `End` for keyboard navigation, and each tab panel is focusable and labelled by its tab.
 
 ## License
 

@@ -539,10 +539,14 @@
               </div>
               <div class="settings-actions">
                 <button class="assistant-prompt" id="updateCheckButton" type="button">Check for updates</button>
-                <button class="assistant-prompt" id="updateOpenReleasesButton" type="button">Open releases page</button>
+                <a class="assistant-prompt settings-link-button" id="updateOpenReleasesButton" href="https://github.com/luffyIO/nse-trading-dashboard/releases" target="_blank" rel="noopener noreferrer">Open releases page</a>
               </div>
               <p class="assistant-storage-status" id="updateStatusMessage" role="status"></p>
               <div class="update-release-notes" id="updateReleaseNotes" hidden></div>
+              <div class="update-assets" id="updateAssets" hidden>
+                <span class="settings-row-copy"><strong>Release downloads</strong><small>Installers published with the latest release. Download and install them manually; the dashboard never replaces the running app.</small></span>
+                <ul class="update-asset-list" id="updateAssetList"></ul>
+              </div>
             </section>
 
             <section class="panel settings-card" aria-labelledby="settingsStorageTitle">

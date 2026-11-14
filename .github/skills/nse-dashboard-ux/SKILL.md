@@ -19,6 +19,9 @@ Design this product as a practical Indian market-monitoring tool, not a generic 
 - Making charts visually impressive but hard to interpret: omit unexplained indicators, overloaded legends, misleading axes, tiny labels, or controls with unclear effects.
 - Hiding essential data behind hover, using tiny low-contrast text, or creating controls that are difficult to operate by keyboard, touch, or assistive technology.
 - Treating mobile as a scaled-down desktop. Prevent horizontal page overflow and preserve access to table columns and chart controls.
+- Stacking every workflow into one long scroll. Use bottom navigation tabs so the market view, assistant, strategy research, and settings each get a focused view, and make sure the tab bar stays reachable and keyboard-operable.
+- Showing an update state that is not backed by a real version comparison. Report "up to date", "update available", or an explicit failure; never imply a release exists that was not verified.
+
 
 ## Workflow
 
@@ -36,3 +39,4 @@ Design this product as a practical Indian market-monitoring tool, not a generic 
 - Keep market status unknown when the feed cannot establish it.
 - Keep chat summaries grounded in the currently loaded dashboard data; do not imply generative intelligence or personalized investment advice when neither is provided.
 - Keep strategy simulations and adaptive-agent output clearly labeled educational and paper-only.
+- Keep release and update messaging tied to a verified published version and a real comparison against the installed version.

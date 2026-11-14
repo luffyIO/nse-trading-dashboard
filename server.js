@@ -5,6 +5,7 @@ require('dotenv').config();
 const app = express();
 const APP_VERSION = require('./package.json').version;
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/luffyIO/nse-trading-dashboard/releases/latest';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const RELEASES_CACHE_MS = 10 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   ...(process.env.CORS_ALLOWED_ORIGINS || '')
@@ -279,12 +280,15 @@ function isNewerVersion(candidate, current) {
 }
 
 async function fetchLatestRelease() {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'nse-trading-dashboard',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+  if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+
   const response = await fetch(GITHUB_RELEASES_API, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'nse-trading-dashboard',
-      'X-GitHub-Api-Version': '2022-11-28'
-    },
+    headers,
     signal: AbortSignal.timeout(10000)
   });
 

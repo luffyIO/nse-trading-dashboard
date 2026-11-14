@@ -34,7 +34,6 @@ const PROVIDER_KEY = 'indian-market-dashboard-provider-v1';
 const CUSTOM_STRATEGIES_KEY = 'indian-market-dashboard-custom-strategies-v1';
 const SETTINGS_KEY = 'indian-market-dashboard-settings-v1';
 const ACTIVE_TAB_KEY = 'indian-market-dashboard-active-tab-v1';
-const RELEASES_URL = 'https://github.com/luffyIO/nse-trading-dashboard/releases';
 const MAX_CUSTOM_STRATEGIES = 8;
 const MAX_CHAT_MESSAGES = 100;
 const DEFAULT_SETTINGS = {
@@ -234,7 +233,6 @@ getTabButtons().forEach((button) => {
     }
   });
 });
-
 
 let savedTab = null;
 try {
@@ -955,6 +953,45 @@ function renderReleaseNotes(notes) {
   container.textContent = notes;
 }
 
+function formatAssetSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderReleaseAssets(assets = []) {
+  const container = document.getElementById('updateAssets');
+  const list = document.getElementById('updateAssetList');
+  if (!container || !list) return;
+
+  const usable = assets.filter((asset) => asset && typeof asset.url === 'string' && /^https:\/\//.test(asset.url));
+  if (usable.length === 0) {
+    container.hidden = true;
+    list.replaceChildren();
+    return;
+  }
+
+  list.replaceChildren();
+  usable.forEach((asset) => {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = asset.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = asset.name || 'download';
+    const size = formatAssetSize(asset.size);
+    if (size) {
+      const meta = document.createElement('span');
+      meta.textContent = size;
+      item.append(link, meta);
+    } else {
+      item.append(link);
+    }
+    list.appendChild(item);
+  });
+  container.hidden = false;
+}
+
 async function checkForUpdates({ force = false } = {}) {
   const button = document.getElementById('updateCheckButton');
   if (button) {
@@ -980,6 +1017,7 @@ async function checkForUpdates({ force = false } = {}) {
     setText('updateLatestVersion', data.latestVersion || 'No release published');
     setText('updatePublishedAt', formatReleaseDate(data.publishedAt));
     renderReleaseNotes(data.notes);
+    renderReleaseAssets(data.assets);
 
     if (data.updateAvailable) {
       setUpdateBadge('Update available');
@@ -994,6 +1032,7 @@ async function checkForUpdates({ force = false } = {}) {
   } catch (error) {
     setUpdateBadge('Check failed');
     setUpdateStatus(`Unable to check for updates: ${error.message}`);
+    renderReleaseAssets([]);
   } finally {
     if (button) {
       button.disabled = false;
@@ -1004,10 +1043,6 @@ async function checkForUpdates({ force = false } = {}) {
 
 document.getElementById('updateCheckButton')?.addEventListener('click', () => {
   checkForUpdates({ force: true });
-});
-
-document.getElementById('updateOpenReleasesButton')?.addEventListener('click', () => {
-  window.open(RELEASES_URL, '_blank', 'noopener,noreferrer');
 });
 
 loadSettings();
